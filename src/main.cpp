@@ -2,12 +2,15 @@
 #include <M5Unified.h>
 #endif
 #include "Adafruit_VL53L0X.h"
+#include "BTHome.h"
 #include <ArduinoJson.h>
 #include <PicoMQTT.h>
 #include <PicoWebsocket.h>
 #include <WiFi.h>
 #include <Wire.h>
 #include <optional>
+
+BTHome bthome;
 
 #define DEVICE_NAME "sensorpod" // The name of the sensor
 #define DURATION 200            // mS
@@ -43,8 +46,10 @@ void setup() {
 #endif
   button_setup();
   i2c_scan(Wire);
-  lox_init(Wire);
+  lox_present = lox_init(Wire);
   wifi_setup();
+  bthome.begin(HOSTNAME, false, "", true);
+  // bthome.setDeviceName(HOSTNAME);
 }
 
 void loop() {
@@ -53,27 +58,56 @@ void loop() {
 #if defined(M5UNIFIED)
   M5.update();
 #endif
-
-  if (wifi_status == WL_CONNECTED) {
-    static unsigned long lastI2CPublish = 0;
-    if (now - lastI2CPublish >= 100) {
-      lox_poll(Wire);
-      lastI2CPublish = now;
-    }
-    static unsigned long lastStatusPublish = 0;
-    if (now - lastStatusPublish >= 1000) {
-      lastStatusPublish = now;
+  static unsigned long last_lox_poll = 0;
+  if (now - last_lox_poll > DURATION) {
+    auto range = lox_poll(Wire);
+    last_lox_poll = now;
+    if (range.has_value()) {
       JsonDocument doc;
-      doc["uptime"] = now / 1000;
-      doc["cpu_temperature"] = temperatureRead();
-      doc["rssi"] = WiFi.RSSI();
-
-      auto publish = mqtt.begin_publish("status", measureJson(doc));
+      doc["distance_mm"] = *range;
+      auto publish = mqtt.begin_publish("VL53L0X", measureJson(doc));
       serializeJson(doc, publish);
       publish.send();
+
+      bthome.stop();
+      bthome.resetMeasurement();
+      bthome.addMeasurement(ID_DISTANCE, (uint64_t)*range);
+      switch (numClicks) {
+      default:
+        break;
+      case 1:
+        log_i("add 1 click");
+        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_PRESS);
+        break;
+      case 2:
+        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_DOUBLE_PRESS);
+        break;
+      case 3:
+        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_TRIPLE_PRESS);
+        break;
+      }
+      numClicks = 0;
+      bthome.buildPacket();
+      bthome.start(DURATION);
+    } else {
+      bthome.stop();
     }
-    mqtt.loop();
   }
+
+  static unsigned long lastStatusPublish = 0;
+  if (now - lastStatusPublish > 1000) {
+    lastStatusPublish = now;
+    JsonDocument doc;
+    doc["uptime"] = now / 1000;
+    doc["cpu_temperature"] = temperatureRead();
+    doc["rssi"] = WiFi.RSSI();
+
+    auto publish = mqtt.begin_publish("status", measureJson(doc));
+    serializeJson(doc, publish);
+    publish.send();
+  }
+
+  mqtt.loop();
   wifi_loop();
   yield();
 }
@@ -86,7 +120,7 @@ bool i2c_probe(TwoWire &w, uint8_t addr) {
 void i2c_scan(TwoWire &w) {
   uint8_t bus = (&w == &Wire) ? 0 : 1;
   log_i("scanning Wire%u", bus);
-  for (auto i = 0; i < 128; i++) {
+  for (auto i = 8; i < 128; i++) {
     w.beginTransmission(i);
     if (w.endTransmission() == 0) {
       log_i("Wire%u dev at 0x%x", bus, i);
@@ -95,7 +129,7 @@ void i2c_scan(TwoWire &w) {
 }
 
 bool lox_init(TwoWire &wire) {
-  lox_present = lox.begin();
+  bool lox_present = lox.begin();
   log_w("VL53L0X:%s detected", lox_present ? "" : " not");
   return lox_present;
 }
@@ -107,15 +141,10 @@ std::optional<uint16_t> lox_poll(TwoWire &wire) {
   VL53L0X_RangingMeasurementData_t measure;
   lox.rangingTest(&measure, false);
   if (measure.RangeStatus != 4) {
+    log_d("range = %u", measure.RangeMilliMeter);
     return measure.RangeMilliMeter;
   }
   return std::nullopt;
-  // JsonDocument doc;
-  //  doc["distance_mm"] = measure.RangeStatus != 4 ? measure.RangeMilliMeter :
-  //  NAN;
-  // auto publish = mqtt.begin_publish("VL53L0X", measureJson(doc));
-  // serializeJson(doc, publish);
-  // publish.send();
 }
 
 #if defined(BUTTON_PIN)

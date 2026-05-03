@@ -25,7 +25,7 @@ SensorPod runs an MQTT broker which publishes sensor updates:
 
 The broker's IP address is:
 
-- picomqtt.local (resolved via mDNS if SensorPod is a WiFi client - recommended for iOS)
+- sensorpod.local (resolved via mDNS if SensorPod is a WiFi client - recommended for iOS)
 - 192.168.4.1 (if SensorPod used as WiFi access point - recommended for Android)
 
 On recording start, Sensor Logger connects to this broker and subscribes (typically to topic '#' - all topics) - now Sensor Logger can run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.
