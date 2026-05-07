@@ -1,30 +1,41 @@
 name: Examples
 
 on:
-  workflow_dispatch:      # Manually start a workflow
+  workflow_dispatch:
   push:
+    branches: [master]
+    tags: ['v*']
     paths-ignore:
-    - '.github/**'        # Ignore changes towards the .github directory
-    - '**.md'             # Do no build if *.md files changes
-    tags:
-    - 'v*'
+      - '.github/**'
+      - '**.md'
+
+concurrency:
+  group: pio-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
+        env:
+          - m5stack-tab5-p4
+          - m5stack-atoms3
+          - m5stamp-s3
+          - m5stack-coreS3
+          - m5stack_nanoc6
+          - esp32-c5-devkitc1-n16r8
+          - esp32p4_waveshare_devkit
+          - seed_xiao_esp32c6
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-           python-version: "3.13"
+          python-version: "3.13"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -33,23 +44,54 @@ jobs:
       - name: Install pio
         run: |
           uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
-      - name: Build example
-        run: |
-          pio run
-      - name: Collect firmware
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          mkdir -p artifacts
-          for d in .pio/build/*/; do
-            env=$(basename "$d")
-            if [ -f "$d/firmware.bin" ]; then
-              cp "$d/firmware.bin" "artifacts/${env}-firmware.bin"
-            fi
-          done
-          ls -l artifacts
-      - name: Create release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
         with:
-          files: artifacts/*.bin
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .pio
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.env }}-
+      - name: Build
+        env:
+          PLATFORMIO_BUILD_TYPE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'debug' }}
+        run: pio run -e ${{ matrix.env }}
+      - name: Stage firmware
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p out
+          cp .pio/build/${{ matrix.env }}/firmware.bin \
+             out/${{ matrix.env }}-${{ github.ref_name }}.bin
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.env }}
+          path: out/*.bin
+          retention-days: 1
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: fw-*
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.bin > sha256sums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.bin
+            dist/sha256sums.txt
           generate_release_notes: true
+          name: ${{ github.ref_name }}
