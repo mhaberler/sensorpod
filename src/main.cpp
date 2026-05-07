@@ -71,7 +71,6 @@ void loop() {
 
       bthome.stop();
       bthome.resetMeasurement();
-      bthome.addMeasurement(ID_DISTANCE, (uint64_t)*range);
       switch (numClicks) {
       default:
         break;
@@ -80,16 +79,23 @@ void loop() {
         bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_PRESS);
         break;
       case 2:
+        log_i("add 2 clicks");
         bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_DOUBLE_PRESS);
         break;
       case 3:
+        log_i("add 3 clicks");
         bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_TRIPLE_PRESS);
         break;
       }
-      numClicks = 0;
+
+      bthome.addMeasurement(ID_DISTANCE, (uint64_t)*range);
+
       bthome.buildPacket();
       bthome.start(DURATION);
     } else {
+      numClicks = 0;
+      log_i("bthome.stop");
+
       bthome.stop();
     }
   }
