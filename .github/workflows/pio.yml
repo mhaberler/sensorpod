@@ -1,0 +1,34 @@
+name: Examples
+
+on:
+  workflow_dispatch:      # Manually start a workflow
+  push:
+    paths-ignore:
+    - '.github/**'        # Ignore changes towards the .github directory
+    - '**.md'             # Do no build if *.md files changes
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+           python-version: "3.13"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+      - name: Install pio
+        run: |
+          uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+      - name: Build example
+        run: |
+          pio run
