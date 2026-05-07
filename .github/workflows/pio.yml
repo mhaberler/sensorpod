@@ -6,6 +6,8 @@ on:
     paths-ignore:
     - '.github/**'        # Ignore changes towards the .github directory
     - '**.md'             # Do no build if *.md files changes
+    tags:
+    - 'v*'
 
 jobs:
   build:
@@ -32,3 +34,20 @@ jobs:
       - name: Build example
         run: |
           pio run
+      - name: Collect firmware
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p artifacts
+          for d in .pio/build/*/; do
+            env=$(basename "$d")
+            if [ -f "$d/firmware.bin" ]; then
+              cp "$d/firmware.bin" "artifacts/${env}-firmware.bin"
+            fi
+          done
+          ls -l artifacts
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.bin
+          generate_release_notes: true
