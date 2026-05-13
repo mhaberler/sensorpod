@@ -94,7 +94,7 @@ void loop() {
       bthome.start(DURATION);
     } else {
       numClicks = 0;
-      log_i("bthome.stop");
+      // log_i("bthome.stop");
 
       bthome.stop();
     }
