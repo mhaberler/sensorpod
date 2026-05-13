@@ -12,7 +12,7 @@ jobs:
       envs: ${{ steps.set.outputs.envs }}
     steps:
       - id: set
-        run: echo 'envs=["m5stack-nanoc6", "m5stack-cores3-m5unified"]' >> $GITHUB_OUTPUT
+        run: echo 'envs=["m5stack-nanoc6"]' >> $GITHUB_OUTPUT
 
   build:
     needs: setup
