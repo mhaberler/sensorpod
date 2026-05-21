@@ -32,7 +32,7 @@ int numClicks;
 Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 bool lox_present;
 
-extern PicoMQTT::Server mqtt;
+#include "mqtt.hpp"
 ImprovWiFi improvSerial(&Serial);
 
 void wifi_setup(void);
@@ -119,6 +119,9 @@ void loop() {
     doc["uptime"] = now / 1000;
     doc["cpu_temperature"] = temperatureRead();
     doc["rssi"] = WiFi.RSSI();
+    doc["mqtt_clients"] = mqtt.connected;
+    doc["mqtt_subscriptions"] = mqtt.subscribed;
+    doc["mqtt_messages"] = mqtt.messages;
 
     auto publish = mqtt.begin_publish("status", measureJson(doc));
     serializeJson(doc, publish);
