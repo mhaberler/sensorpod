@@ -90,9 +90,11 @@ The active build envs cover a fleet of M5Stack boards plus a few generic devkits
 
 ### Prerequisites
 
+This project uses [Pioarduino](https://github.com/pioarduino) - a fork of PlatformIO:
+
 ```bash
-# Install PlatformIO
-pip install platformio
+# Install
+brew install pioarduino/pioarduino/pioarduino
 
 # Clone and navigate to project
 cd sensorpod
@@ -104,9 +106,6 @@ cd sensorpod
 # Build default env (m5stack-nanoc6)
 pio run
 
-# Build a specific env
-pio run -e esp32-c5-devkitc1-n16r8
-
 # Flash and open serial monitor
 pio run -e m5stack-nanoc6 -t upload -t monitor
 
@@ -114,11 +113,23 @@ pio run -e m5stack-nanoc6 -t upload -t monitor
 pio run -e m5stack-nanoc6 -t firmware
 ```
 
+## Pre-built firmware
+
+can be found at https://github.com/mhaberler/sensorpod/releases/tag/v0.0.1
+
+download the `sensorpod_m5stack-nanoc6_firmware_0.0.1.bin`
+
+Use [ESPTool](https://jason2866.github.io/esp32tool/) to flash the firmware
+
+See also https://github.com/Jason2866/esp32tool
+
 ## WiFi provisioning
 
 SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol (BLE transport is not enabled in this firmware). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
 
-See the [pioarduino-ghota README](https://github.com/mhaberler/pioarduino-ghota/blob/master/README.md) for the end-to-end provisioning walkthrough. For SensorPod use the **serial** Improv client, e.g. [Improv Web — Serial](https://www.improv-wifi.com/serial/), instead of the BLE client linked there.
+For SensorPod use the __Improv via Serial__ button.
+
+Connect to your devices` port and set SSID and password for your Access Point or Mobile hotspot..
 
 The device's own AP is named `ESP32-<MAC>` with PSK = the hostname (`sensorpod` unless overridden by `-DHOSTNAME=…` at build time). The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
 
