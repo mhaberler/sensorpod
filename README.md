@@ -12,10 +12,10 @@ It is a demonstration how to use [Sensor Logger](https://www.tszheichoi.com/sens
 
 ## How SensorPod talks to Sensor Logger
 
-SensorPod can connect to a WiFi access point. It  simultaneously can act as an access point itself, giving three possible scenarios:
+SensorPod always runs a WiFi access point and can simultaneously connect to another access point as a station once credentials are provisioned. Three deployment scenarios:
 
 1. the mobile is a personal hotspot and SensorPod connects to it
-2. the mobile as well as SensorPod connect to some common WiFi acces point
+2. the mobile as well as SensorPod connect to some common WiFi access point
 3. the mobile connects as WiFi client to the SensorPod WiFi access point.
 
 SensorPod runs an MQTT broker which publishes sensor updates:
@@ -23,12 +23,24 @@ SensorPod runs an MQTT broker which publishes sensor updates:
 - MQTT-over-TCP: port 1883, no TLS
 - MQTT-over-Websockets: port 8883, no TLS
 
-The broker's IP address is:
+The broker is reachable at:
 
-- sensorpod.local (resolved via mDNS if SensorPod is a WiFi client - recommended for iOS)
-- 192.168.4.1 (if SensorPod used as WiFi access point - recommended for Android)
+- `sensorpod.local` (resolved via mDNS when SensorPod is a WiFi client — recommended for iOS)
+- `192.168.4.1` (when the mobile connects to SensorPod's own AP — recommended for Android)
 
-On recording start, Sensor Logger connects to this broker and subscribes (typically to topic '#' - all topics) - now Sensor Logger can run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.
+The broker starts at boot and runs on both the AP and the STA interface simultaneously, so it is reachable regardless of WiFi state.
+
+### mDNS service announcements
+
+SensorPod advertises itself on both interfaces via mDNS as `<HOSTNAME>.local` (default `sensorpod.local`). The following services are announced:
+
+- `_mqtt._tcp` on port 1883 — instance name `sensorpod-TCP-<MAC>`
+- `_mqtt-ws._tcp` on port 8883 with TXT record `path=/mqtt` — instance name `sensorpod-WS-<MAC>`
+- `_workstation._tcp` (generic host advertisement)
+
+Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can therefore discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
+
+On recording start, Sensor Logger connects to this broker and subscribes (typically to topic `#` — all topics). Sensor Logger can then run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.
 
 ## How to configure Sensor Logger manually
 
@@ -39,15 +51,15 @@ here are screenshots from the Settings -> Data Streaming page:
 	<img src="https://raw.githubusercontent.com/mhaberler/sensorpod/master/assets/broker-android.jpg" width="30%">
 </div>
 
-If SensorPod and SensorLogger already are WiFi-connected, try the 'Test Push' button - it should show a success: "Message sent"
+If SensorPod and SensorLogger already are WiFi-connected, try the 'Test Push' button — it should show a success: "Message sent"
 
-## Configure Sensor Logger via  link or QR Code
+## Configure Sensor Logger via link or QR Code
 
 This is easier than typing in manually and reflects the above configurations
 
 ### iOS
 
-[Click this link](https://sensorlogger.app/link/config/KLUv/WDgA90OAAbcVSUgrbYBLLDDTA4lVcT6E9wSRNwFapzXb2gzVH5dt5sqOzIAMIBxRQBMAEcAzr3ZvJPQPti3rUGSXdUz/2peJNmV7vvc+eVCriJ3cxJk99pYIdn1PI/ARk+2/hQCyss+SuH2/lrcGskKKPf1GZodrmdFz+OAHg+n4TgKGo7Ao8FgQFC+1sT/KtmVaZ74pSz8CuN60/uvkcsuJLsWVXtlafHu2mFfLYtvXYSnob2WSn4hRiV3jRZLHq7rykZuAR8lwLSU6+aUxpPlb6axU+uQm6kthNx6MRh+UDYX+f19shxwOBwJ5TfHZPm08XO4ufgfYTk/VwsXuNFlPBm73gUqWerrhfEEV8JKQrkZnYDE3UyyJGhkayYY6CDUxkA5yyksmPK48u1qcu6dLCfRNEEkS8XgQTI1PERSwhRNkElAJEEoDweUhImlIoksllIyOgpHrWaDfQ5C0wEyIBCGLErbpGR2DSI2Y7FpgwTkM4xjNO7ghK9j+67whqQifJJs3GQYGatcWJXgZiNVo3SQay2RDA+lYdHDdV6WCwna6WnzJCbMavMUEwjrnICjGtAwgFED5puS2TAMhec+Ygx4HZZOyvLMZwxQFtfhGKTBCjqoXntDpJHXgbBC4PA=) and import the config into Sensor Logger or scan this QR Code:
+[Click this link](sensorlogger://config/KLUv/WCUA/UMAOZXSCQgraYNAwy3aM8KMR3UHlnKYeJpOjPLO2mZYnHUNQU6MgAwgHE6AD4AQAAEX1XUqp2Ug3xVZ07HrO75NJp0WZM8bY1ME74qhmEaOfFXssMH50+6Cr7c7JR0EfIJ59nYDav8kj8RqxKdCvk6gtpeNrsR8uTkq1JErFEliua2DtnIoOjFRGAa3JQw0vkglDDjJGmkX7ZdyEkZ614u3SJwD9IlYwHNrr8e4HA0d96r09cdMnWLR6duCIm1NZo8L6dm4S9tm5PK17HxYTAM43Aej0WzcAw0i8ajYTAc526pqTv6qiwB1d/CnacFJQimTMvXBZovVQC99h6yhm5SS1CogtOIcyNKY15q2+AAlKy0ZVyh+OuTCOUXCsv3lG1CkDrWJg0vICCCZE3aAViS3fkULBr8eUHiUifGu+IbiIzwRrm6yXAyVsGgyjVFh+KOZQB1lkgED2Vh0cN13suFCtqptPknJgy1+RUTDuuMgGMNaBjASAPmTAlsGLrC8z5iD3gZls7L8vwzBi6L2+GYpMECOiivvUKkjdfRsELg8A==) and import the config into Sensor Logger or scan this QR Code:
 
 <div style="display: flex; justify-content: center;">
   <img src="https://raw.githubusercontent.com/mhaberler/sensorpod/master/assets/qrcode-ios.jpg" alt="Placeholder" style="max-width: 300px; max-height: 300px;">
@@ -63,9 +75,11 @@ This is easier than typing in manually and reflects the above configurations
 
 ## Supported Boards
 
+The active build envs cover a fleet of M5Stack boards plus a few generic devkits — see `[env:*]` sections in `platformio.ini` for the full list. The default env is `m5stack-nanoc6`. Frequently used:
+
+- **[M5Stack NanoC6](https://docs.m5stack.com/en/core/nanoc6)** (default)
 - **[M5Stack Tab5-P4](https://docs.m5stack.com/en/core/Tab5)**
 - **[M5Stack CoreS3](https://docs.m5stack.com/en/core/cores3)**
-- **[M5Stack NanoC6](https://docs.m5stack.com/en/core/nanoc6)**
 - **[M5Stack AtomS3](https://docs.m5stack.com/en/core/atoms3)**
 - **[M5Stack Stamp S3](https://docs.m5stack.com/en/core/stamp_s3)**
 - **[Seeed XIAO ESP32-C6](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/)**
@@ -84,90 +98,83 @@ pip install platformio
 cd sensorpod
 ```
 
-### Build for Specific Board
+### Build, flash, monitor
 
 ```bash
-# Build for Seed Xiao esp32c6
-pio run -e seed_xiao_esp32c6
+# Build default env (m5stack-nanoc6)
+pio run
 
-# List all available environments
-pio env list
+# Build a specific env
+pio run -e esp32-c5-devkitc1-n16r8
+
+# Flash and open serial monitor
+pio run -e m5stack-nanoc6 -t upload -t monitor
+
+# Build a merged single-binary image (drops into firmware/)
+pio run -e m5stack-nanoc6 -t firmware
 ```
 
-### Upload Firmware
+## WiFi provisioning
 
-```bash
-# Upload to board
-pio run -e pio run -e seed_xiao_esp32c6 --target upload
+SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol (BLE transport is not enabled in this firmware). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
 
-# Monitor serial output
-pio run -e pio run -e seed_xiao_esp32c6 --target upload --target monitor
-```
+See the [pioarduino-ghota README](https://github.com/mhaberler/pioarduino-ghota/blob/master/README.md) for the end-to-end provisioning walkthrough. For SensorPod use the **serial** Improv client, e.g. [Improv Web — Serial](https://www.improv-wifi.com/serial/), instead of the BLE client linked there.
+
+The device's own AP is named `ESP32-<MAC>` with PSK = the hostname (`sensorpod` unless overridden by `-DHOSTNAME=…` at build time). The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
+
+### Erasing credentials
+
+Long-press the on-board button (≥800 ms) to wipe saved credentials and stop the STA. The AP stays up. The device does not reboot. Power-cycle confirms the wipe persisted.
+
+Click counts (single/double/multi) are reserved for application-level button events.
+
+## Sensors
+
+The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C bus and publishes:
+
+- `VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
+- `status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
+
+If no VL53L0X is detected at boot, polling is skipped and only the `status` topic publishes.
 
 ## Configuration
 
-### WiFi Credentials
+### Build flags
 
-Those are set at build time, so decide on the scenario - my recommendation:
-
-- iOS: enable mobile hotspot, have SensorPod connect to the mobile Hotspot
-    - no common access point needed
-    - mobile still has Internet connectivity via  mobile data or as a WiFi client
-    - broker IP address resolved by MDNS.
-- Android: connect to SensorPod WiFi AP
-    - no common access point needed
-    - broker IP address known in advance - always 192.168.4.1
-    - MDNS not usable - Android implementation is deficient
-    - mobile loses Internet connectivity while connected to SensorPod WiFi AP
-
-Set environment variables before building:
-
-```bash
-export WIFI_SSID2="your_ssid"
-export WIFI_PASSWORD2="your_password"
-
-pio run -e pio run -e seed_xiao_esp32c6
-
-```
-
-Or edit `platformio.ini` credentials section directly.
-
-### Build Flags
-
-Key configuration options in `platformio.ini`:
+Key options in `platformio.ini`:
 
 ```ini
-# Debug level (0-5): 0=none, 5=verbose
--DCORE_DEBUG_LEVEL=3
-
-# MQTT port and WebSocket port
+-DCORE_DEBUG_LEVEL=5    # 0=none, 5=verbose (release env uses 1)
 -DMQTT_PORT=1883
 -DMQTTWS_PORT=8883
+-DHOSTNAME=\"sensorpod\"
 ```
 
-## Project Structure
+`SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
+
+## Project structure
 
 ```
 sensorpod/
 ├── src/
-│   ├── main.cpp           # Application entry point
-│   ├── i2cio.cpp/.hpp     # I2C sensor interface
-│   ├── mqtt.cpp           # MQTT client implementation
-│   ├── BLEScanner.cpp     # Bluetooth scanning
-│   ├── wifisetup.cpp      # WiFi configuration
-│   └── ringbuffer.hpp     # Data buffering utility
-├── platformio.ini         # Project configuration
-└── include/               # Header files and configuration
+│   ├── main.cpp        # setup/loop, sensor polling, MQTT publish, button
+│   ├── wifisetup.cpp   # AP + STA + mDNS, Improv-WiFi handoff
+│   ├── mqtt.cpp        # PicoMQTT broker (TCP + WebSocket)
+│   └── credstore.hpp   # NVS wrapper for WiFi credentials
+├── scripts/            # PlatformIO extra_scripts (build info, version, OTA)
+├── platformio.ini      # Boards + envs + lib_deps
+└── *.csv               # Partition tables
 ```
 
 ## Dependencies
 
-- **[M5Unified](https://github.com/m5stack/M5Unified )**: Board abstraction layer for M5Stack devices
-- **[ArduinoJson](https://github.com/bblanchon/ArduinoJson)**: JSON parsing and generation
-- **[PicoMQTT](https://github.com/mlesniew/PicoMQTT.git)**: Lightweight MQTT broker
-- **[PicoWebsockets](https://github.com/mlesniew/PicoMQTT.git)**: WebSocket implementation
-- **[BTHomeDecoder](https://github.com/fredriknk/BTHomeDecoder.git)**: [BTHome V2](https://bthome.io/) decoder for sensors
-- **[Adafruit_VL53L0X](https://github.com/adafruit/Adafruit_VL53L0X)**: driver for the VL53L0X time-of-flight distance sensor
+Resolved automatically via `lib_deps` in `platformio.ini`:
+
+- **[ArduinoJson](https://github.com/bblanchon/ArduinoJson)** — JSON encoding for MQTT payloads
+- **[PicoMQTT](https://github.com/mlesniew/PicoMQTT)** + **[PicoWebsocket](https://github.com/mlesniew/PicoWebsocket)** — embedded broker + WS transport
+- **[Improv-WiFi-Library](https://github.com/mhaberler/Improv-WiFi-Library)** — serial provisioning protocol
+- **[OneButton](https://github.com/mathertel/OneButton)** — debounced button + long-press detection
+- **[Adafruit_VL53L0X](https://github.com/adafruit/Adafruit_VL53L0X)** — time-of-flight distance sensor driver
 
 ## License
 
