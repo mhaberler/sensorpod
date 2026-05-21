@@ -9,24 +9,17 @@ from typing import Any
 
 from SCons.Script import DefaultEnvironment  # type: ignore[import-untyped]
 
+from firmware_naming import (
+    get_project_option as _gpo,
+    merged_bin_filename,
+    ota_bin_filename,
+)
+
 env: Any = DefaultEnvironment()
 
 
-def get_project_option(name, default=None):
-    try:
-        value = env.GetProjectOption(name)
-    except Exception:
-        return default
-
-    if value is None:
-        return default
-
-    if isinstance(value, str):
-        value = env.subst(value).strip()
-        if value == "":
-            return default
-
-    return value
+def get_project_option(name, default=None) -> Any:
+    return _gpo(env, name, default)
 
 
 def split_list(value):
@@ -35,66 +28,6 @@ def split_list(value):
     if isinstance(value, (list, tuple)):
         return list(value)
     return [item.strip() for item in re.split(r"[,\s]+", str(value)) if item.strip()]
-
-
-def sanitize_filename_part(value):
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value)).strip("_")
-
-
-def sanitize_project_name(value):
-    return sanitize_filename_part(str(value).replace("-", "_"))
-
-
-def normalize_version(value):
-    value = str(value).strip()
-    return value[1:] if value.startswith("v") else value
-
-
-def read_version_from_file(path, pattern):
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    match = re.search(pattern, content)
-    if not match:
-        raise RuntimeError(f"Version is not found in {path}")
-
-    return normalize_version(match.group(1))
-
-
-def resolve_version():
-    explicit_version = get_project_option("custom_firmware_version")
-    if explicit_version:
-        return normalize_version(explicit_version)
-
-    version_file = get_project_option("custom_firmware_version_file")
-    if version_file:
-        pattern = get_project_option(
-            "custom_firmware_version_regex",
-            r"v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)",
-        )
-
-        project_dir = env.subst("$PROJECT_DIR")
-        src_dir = env.subst("$PROJECT_SRC_DIR")
-
-        candidates = []
-        if os.path.isabs(version_file):
-            candidates.append(version_file)
-        else:
-            candidates.append(os.path.join(src_dir, version_file))
-            candidates.append(os.path.join(project_dir, version_file))
-
-        for candidate in candidates:
-            if os.path.exists(candidate):
-                return read_version_from_file(candidate, pattern)
-
-        raise RuntimeError(f"Version file is not found: {version_file}")
-
-    github_ref_name = os.environ.get("GITHUB_REF_NAME", "")
-    match = re.match(r"^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$", github_ref_name)
-    if match:
-        return normalize_version(match.group(1))
-
-    return "dev"
 
 
 def resolve_chip():
@@ -120,7 +53,6 @@ def resolve_chip():
 def generate_merged_firmware(target, source, env):
     project_dir = env.subst("$PROJECT_DIR")
     build_dir = env.subst("$BUILD_DIR")
-    pioenv = env.subst("$PIOENV")
     progname = env.subst("$PROGNAME")
 
     firmware_dir = get_project_option("custom_firmware_dir", "firmware")
@@ -128,24 +60,8 @@ def generate_merged_firmware(target, source, env):
         firmware_dir = os.path.join(project_dir, firmware_dir)
     os.makedirs(firmware_dir, exist_ok=True)
 
-    firmware_name = get_project_option(
-        "custom_firmware_name",
-        os.path.basename(project_dir),
-    )
-    firmware_target = get_project_option("custom_firmware_target")
-    if firmware_target is None:
-        firmware_target = env.subst("$PIOENV")
     firmware_suffix = get_project_option("custom_firmware_suffix", "bin")
-    firmware_version = resolve_version()
-    firmware_env = get_project_option("custom_firmware_env")
-    if firmware_env is None:
-        firmware_env = pioenv
-    output_filename = "{name}_{env}_firmware_{version}.{suffix}".format(
-        name=sanitize_project_name(firmware_name),
-        env=sanitize_filename_part(firmware_env),
-        version=sanitize_filename_part(firmware_version),
-        suffix=sanitize_filename_part(firmware_suffix),
-    )
+    output_filename = merged_bin_filename(env, firmware_suffix)
     output_path = os.path.join(firmware_dir, output_filename)
 
     app_bin = os.path.join(build_dir, f"{progname}.{firmware_suffix}")
@@ -164,7 +80,7 @@ def generate_merged_firmware(target, source, env):
         env.subst("$UPLOADER"),
         "--chip",
         chip,
-        "merge_bin",
+        "merge-bin",
         "-o",
         output_path,
     ]
@@ -192,12 +108,7 @@ def generate_merged_firmware(target, source, env):
 
     print(f"Merged firmware generated: {output_path}")
 
-    ota_filename = "{name}_{env}_ota_{version}.{suffix}".format(
-        name=sanitize_project_name(firmware_name),
-        env=sanitize_filename_part(firmware_env),
-        version=sanitize_filename_part(firmware_version),
-        suffix=sanitize_filename_part(firmware_suffix),
-    )
+    ota_filename = ota_bin_filename(env, firmware_suffix)
     ota_path = os.path.join(firmware_dir, ota_filename)
     shutil.copy2(app_bin, ota_path)
     print(f"OTA (app-only) binary copied: {ota_path}")

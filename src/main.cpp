@@ -1,16 +1,29 @@
 #if defined(M5UNIFIED)
 #include <M5Unified.h>
 #endif
+#include <ImprovWiFiBLE.h>
+#include <ImprovWiFiLibrary.h>
 #include "Adafruit_VL53L0X.h"
-#include "BTHome.h"
 #include <ArduinoJson.h>
 #include <PicoMQTT.h>
 #include <PicoWebsocket.h>
 #include <WiFi.h>
 #include <Wire.h>
 #include <optional>
+#include "credstore.hpp"
 
-BTHome bthome;
+#ifdef BUILD_TAG
+    #define FW_VERSION  BUILD_TAG
+#else
+    #define FW_VERSION  "0.0.1"
+#endif
+// start BLE provisioning service only afeter wifi connect failed
+// p4 takes longer time to get set up
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+    #define TIME_TO_CONNECT 15*1000
+#else
+    #define TIME_TO_CONNECT 8*1000
+#endif
 
 #define DEVICE_NAME "sensorpod" // The name of the sensor
 #define DURATION 200            // mS
@@ -20,16 +33,40 @@ Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 bool lox_present;
 
 extern PicoMQTT::Server mqtt;
-extern uint8_t wifi_status;
+ImprovWiFi improvSerial(&Serial);
 
 void wifi_setup(void);
 void wifi_loop(void);
+void startStaAttempt(const String &ssid, const String &pass);
+void stopSta();
 void button_setup(void);
 void button_loop(void);
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
 std::optional<uint16_t> lox_poll(TwoWire &wire);
+void getMacAddress(String &macStr);
+
+void onImprovWiFiErrorCb(ImprovTypes::Error err) {
+    // server.stop();
+    // blinkLed(2000, 3);
+}
+
+void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
+    log_i("Improv provisioned ssid=%s", ssid);
+    saveWiFiCredentials(ssid, password);
+    startStaAttempt(String(ssid), String(password));
+}
+
+void startImprovSerialProvisioning() {
+    String mac;
+    getMacAddress(mac);
+    String devId = String(HOSTNAME) + "_" + mac;
+    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib", IMPROV_WIFI_LIBRARY_VERSION, devId.c_str(), "http://{LOCAL_IPV4}");
+    improvSerial.onImprovError(onImprovWiFiErrorCb);
+    improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -42,17 +79,19 @@ void setup() {
   Wire.end();
   Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
 #else
-  Wire.begin();
+  Wire.begin(SDA_PIN,SCL_PIN, 400000);
 #endif
+  startImprovSerialProvisioning();
   button_setup();
-  i2c_scan(Wire);
+  // i2c_scan(Wire);
   lox_present = lox_init(Wire);
   wifi_setup();
-  bthome.begin(HOSTNAME, false, "", true);
-  // bthome.setDeviceName(HOSTNAME);
+  mqtt.begin();
 }
 
 void loop() {
+  improvSerial.handleSerial();
+
   unsigned long now = millis();
   button_loop();
 #if defined(M5UNIFIED)
@@ -68,35 +107,8 @@ void loop() {
       auto publish = mqtt.begin_publish("VL53L0X", measureJson(doc));
       serializeJson(doc, publish);
       publish.send();
-
-      bthome.stop();
-      bthome.resetMeasurement();
-      switch (numClicks) {
-      default:
-        break;
-      case 1:
-        log_i("add 1 click");
-        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_PRESS);
-        break;
-      case 2:
-        log_i("add 2 clicks");
-        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_DOUBLE_PRESS);
-        break;
-      case 3:
-        log_i("add 3 clicks");
-        bthome.addMeasurement_state(EVENT_BUTTON, EVENT_BUTTON_TRIPLE_PRESS);
-        break;
-      }
-
-      bthome.addMeasurement(ID_DISTANCE, (uint64_t)*range);
-
-      bthome.buildPacket();
-      bthome.start(DURATION);
     } else {
       numClicks = 0;
-      // log_i("bthome.stop");
-
-      bthome.stop();
     }
   }
 
@@ -147,7 +159,7 @@ std::optional<uint16_t> lox_poll(TwoWire &wire) {
   VL53L0X_RangingMeasurementData_t measure;
   lox.rangingTest(&measure, false);
   if (measure.RangeStatus != 4) {
-    log_d("range = %u", measure.RangeMilliMeter);
+    // log_d("range = %u", measure.RangeMilliMeter);
     return measure.RangeMilliMeter;
   }
   return std::nullopt;
@@ -175,6 +187,12 @@ void multiClick() {
   numClicks = n;
 }
 
+void longPressErase() {
+  log_w("button long-press: erasing creds, AP-only mode");
+  clearWiFiCredentials();
+  stopSta();
+}
+
 #endif
 
 void button_setup(void) {
@@ -182,6 +200,7 @@ void button_setup(void) {
   button.attachClick(singleClick);
   button.attachDoubleClick(doubleClick);
   button.attachMultiClick(multiClick);
+  button.attachLongPressStart(longPressErase);
 #endif
 }
 

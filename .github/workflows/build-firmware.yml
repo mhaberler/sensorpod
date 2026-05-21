@@ -4,18 +4,35 @@ on:
   workflow_dispatch:
     inputs:
       platformio_envs:
-        description: "PlatformIO environments to build as a JSON array"
-        required: true
-        default: '["m5stack-nanoc6"]'
+        description: "PlatformIO environments to build as a JSON array (leave empty to use [ci] envs from platformio.ini)"
+        required: false
+        default: ""
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.set.outputs.envs }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: set
+        run: |
+          python - >> "$GITHUB_OUTPUT" <<'PY'
+          import configparser, json
+          cp = configparser.ConfigParser()
+          cp.read("platformio.ini")
+          envs = cp.get("ci", "envs").split()
+          print(f"envs={json.dumps(envs)}")
+          PY
+
   build:
+    needs: setup
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        platformio_env: ${{ fromJSON(inputs.platformio_envs) }}
+        platformio_env: ${{ fromJSON(inputs.platformio_envs != '' && inputs.platformio_envs || needs.setup.outputs.envs) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -24,13 +41,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-platformio
           restore-keys: ${{ runner.os }}-pip-
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini', 'platformio-m5stack.ini') }}
@@ -46,8 +63,8 @@ jobs:
         run: pio run -e ${{ matrix.platformio_env }} -t firmware
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.platformio_env }}
-          path: firmware/*_${{ matrix.platformio_env }}_firmware_*.bin
+          path: firmware/*.bin
           if-no-files-found: error

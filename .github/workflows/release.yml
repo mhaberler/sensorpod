@@ -11,8 +11,16 @@ jobs:
     outputs:
       envs: ${{ steps.set.outputs.envs }}
     steps:
+      - uses: actions/checkout@v5
       - id: set
-        run: echo 'envs=["m5stack-nanoc6"]' >> $GITHUB_OUTPUT
+        run: |
+          python - >> "$GITHUB_OUTPUT" <<'PY'
+          import configparser, json
+          cp = configparser.ConfigParser()
+          cp.read("platformio.ini")
+          envs = cp.get("ci", "envs").split()
+          print(f"envs={json.dumps(envs)}")
+          PY
 
   build:
     needs: setup
@@ -30,13 +38,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-platformio
           restore-keys: ${{ runner.os }}-pip-
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini', 'platformio-m5stack.ini') }}
@@ -52,7 +60,7 @@ jobs:
         run: pio run -e ${{ matrix.platformio_env }} -t firmware
 
       - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.platformio_env }}
           path: firmware/*.bin
@@ -66,13 +74,13 @@ jobs:
 
     steps:
       - name: Download all firmware artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: firmware
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: firmware/*.bin
           generate_release_notes: true
