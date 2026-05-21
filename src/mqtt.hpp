@@ -12,21 +12,21 @@ public:
 
 protected:
   void on_connected(const char *client_id) override {
-    log_w("client %s connected", client_id);
     connected++;
+    log_w("client %s connected (clients=%d)", client_id, connected);
   }
   virtual void on_disconnected(const char *client_id) override {
-    log_w("client %s disconnected", client_id);
     connected--;
+    log_w("client %s disconnected (clients=%d)", client_id, connected);
   }
   virtual void on_subscribe(const char *client_id, const char *topic) override {
-    log_w("client %s subscribed %s", client_id, topic);
     subscribed++;
+    log_w("client %s subscribed %s (subs=%d)", client_id, topic, subscribed);
   }
   virtual void on_unsubscribe(const char *client_id,
                               const char *topic) override {
-    log_w("client %s unsubscribed %s", client_id, topic);
     subscribed--;
+    log_w("client %s unsubscribed %s (subs=%d)", client_id, topic, subscribed);
   }
   virtual void on_message(const char *topic,
                           PicoMQTT::IncomingPacket &packet) override {
