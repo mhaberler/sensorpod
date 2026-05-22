@@ -254,6 +254,12 @@ static void onNetworkEvent(arduino_event_id_t event) {
             log_w("STA connected to %s %s RSSI %d IP: %s", WiFi.STA.SSID().c_str(),
                   WiFi.STA.BSSIDstr().c_str(), WiFi.STA.RSSI(),
                   WiFi.STA.localIP().toString().c_str());
+            if (Network.isOnline() && updateEspHostedSlave()) {
+                // Restart the host ESP32 after successful update
+                // This is currently required to properly activate the new firmware
+                // on the ESP-Hosted co-processor
+                ESP.restart();
+            }
             break;
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             log_w("STA disconnected");
@@ -350,16 +356,8 @@ void wifi_loop() {
     }
     wl_status_t s = WiFi.status();
     if (wifiStatus ^ s) {
-        log_i("WiFi status change %u -> %u", wifiStatus, s);
+        log_w("WiFi status change %u -> %u", wifiStatus, s);
         wifiStatus = s;
-        if (wifiStatus == WL_CONNECTED) {
-            if (updateEspHostedSlave()) {
-                // Restart the host ESP32 after successful update
-                // This is currently required to properly activate the new firmware
-                // on the ESP-Hosted co-processor
-                ESP.restart();
-            }
-        }
     }
     http_server.handleClient();
 }
