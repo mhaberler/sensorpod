@@ -10,8 +10,8 @@
 #   SGO_DEFAULT_REPO     if unset + git remote parseable — repo name
 #   SGO_DEFAULT_BIN      if unset — ota_bin_filename(env)
 #
-# Additional defines come from platformio.ini build_flags (WIFI_SSID,
-# WIFI_PASSWORD, CORE_DEBUG_LEVEL, AUTOCHECK_INTERVAL, USE_*, etc.).
+# Additional defines come from platformio.ini build_flags -
+# CORE_DEBUG_LEVEL, AUTOCHECK_INTERVAL, USE_*, etc.).
 
 from __future__ import annotations
 
