@@ -116,7 +116,7 @@ pio run -e m5stack-nanoc6 -t firmware
 
 ## Pre-built firmware
 
-can be found at https://github.com/mhaberler/sensorpod/releases/tag/v0.0.1
+can be found at https://github.com/mhaberler/sensorpod/releases
 
 download the `sensorpod_m5stack-nanoc6_firmware_0.0.1.bin`
 
@@ -142,7 +142,7 @@ Click **Firmware update** on the root page, or browse to `/update`. The page acc
 
 **Upload the `*_ota.bin` artifact, not `*_firmware.bin`.** The `*_firmware.bin` is the merged image (bootloader + partition table + app) and is only valid when flashed over USB with esptool. OTA must write only the app slot; the OTA file is the plain app binary.
 
-Both are published on the [releases page](https://github.com/mhaberler/sensorpod/tags). After a successful upload the device reboots into the new image; the previously-running slot becomes the fallback. The partition table on `/` will show the new image as `RUN` after reboot.
+Both are published on the [releases page](https://github.com/mhaberler/sensorpod/releases). After a successful upload the device reboots into the new image; the previously-running slot becomes the fallback. The partition table on `/` will show the new image as `RUN` after reboot.
 
 The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag, which is composed into the default and release env build_flags via the `[ota]` block in `platformio.ini`. Drop the inclusion to build a firmware without the OTA endpoint.
 
