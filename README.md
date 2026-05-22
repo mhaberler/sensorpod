@@ -36,6 +36,7 @@ SensorPod advertises itself on both interfaces via mDNS as `<HOSTNAME>.local` (d
 
 - `_mqtt._tcp` on port 1883 — instance name `sensorpod-TCP-<MAC>`
 - `_mqtt-ws._tcp` on port 8883 with TXT record `path=/mqtt` — instance name `sensorpod-WS-<MAC>`
+- `_http._tcp` on port 80 — sysinfo + OTA web updater (see [Firmware update](#firmware-update))
 - `_workstation._tcp` (generic host advertisement)
 
 Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can therefore discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
@@ -123,6 +124,28 @@ Use [ESPTool](https://jason2866.github.io/esp32tool/) to flash the firmware
 
 See also https://github.com/Jason2866/esp32tool
 
+## Firmware update
+
+After the initial USB flash of a pre-built image (see [Pre-built firmware](#pre-built-firmware) above), all subsequent firmware updates can be done over WiFi — no cable needed.
+
+Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on port 80:
+
+- `http://sensorpod.local/` (mDNS — iOS/macOS/Linux)
+- `http://192.168.4.1/` (when connected to SensorPod's own AP)
+- `http://<STA-IP>/` (look up the IP on your router or in the serial log)
+
+The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table (with `RUN` and `NEXT` slots highlighted), network state, and announced mDNS services. `GET /data` returns the same as JSON.
+
+### OTA web updater
+
+Click **Firmware update** on the root page, or browse to `/update`. The page accepts a multipart upload of an OTA image.
+
+**Upload the `*_ota.bin` artifact, not `*_firmware.bin`.** The `*_firmware.bin` is the merged image (bootloader + partition table + app) and is only valid when flashed over USB with esptool. OTA must write only the app slot; the OTA file is the plain app binary.
+
+Both are published on the [releases page](https://github.com/mhaberler/sensorpod/tags). After a successful upload the device reboots into the new image; the previously-running slot becomes the fallback. The partition table on `/` will show the new image as `RUN` after reboot.
+
+The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag, which is composed into the default and release env build_flags via the `[ota]` block in `platformio.ini`. Drop the inclusion to build a firmware without the OTA endpoint.
+
 ## WiFi provisioning
 
 SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol (BLE transport is not enabled in this firmware). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
@@ -169,8 +192,10 @@ Key options in `platformio.ini`:
 sensorpod/
 ├── src/
 │   ├── main.cpp        # setup/loop, sensor polling, MQTT publish, button
-│   ├── wifisetup.cpp   # AP + STA + mDNS, Improv-WiFi handoff
+│   ├── wifisetup.cpp   # AP + STA + mDNS + HTTP server, sysinfo HTML/JSON
 │   ├── mqtt.cpp        # PicoMQTT broker (TCP + WebSocket)
+│   ├── ota.cpp         # OTA web updater (gated on OTA_WEB_UPDATER)
+│   ├── http_server.hpp # shared WebServer handle + page style
 │   └── credstore.hpp   # NVS wrapper for WiFi credentials
 ├── scripts/            # PlatformIO extra_scripts (build info, version, OTA)
 ├── platformio.ini      # Boards + envs + lib_deps

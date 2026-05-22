@@ -32,20 +32,33 @@ provisioning is the normal flow and writes to `Preferences` (NVS).
 
 ## Architecture
 
-Single-translation-unit Arduino sketch. `src/main.cpp` is the whole app:
+Multi-file Arduino sketch. Current sources:
 
-- `setup()` brings up M5Unified (where defined), starts Improv-WiFi over serial,
-  tries cached creds from NVS, and starts the HTTP server on connect.
-- `loop()` polls OneButton, watches `WiFi.status()` for transitions, serves
-  HTTP, and — if no connection within `TIME_TO_CONNECT` (15s on P4, 8s
-  elsewhere) — starts Improv-WiFi BLE provisioning as fallback.
-- `src/credstore.hpp` wraps NVS `Preferences` for SSID/password.
-- 5× click on the button clears creds and restarts (factory reset).
+- `src/main.cpp` — `setup()`/`loop()`, sensor polling (VL53L0X), MQTT publish,
+  OneButton handling. `setup()` brings up M5Unified (where defined), starts
+  Improv-WiFi over serial, tries cached creds from NVS, and starts the HTTP
+  server on connect. `loop()` watches `WiFi.status()` and falls back to
+  Improv-WiFi BLE provisioning after `TIME_TO_CONNECT` (15s on P4, 8s
+  elsewhere). 5× click on the button clears creds and restarts (factory
+  reset); long-press wipes creds without reboot.
+- `src/wifisetup.cpp` — AP + STA bring-up, mDNS announcements
+  (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`), HTTP server registration
+  (`/` sysinfo HTML, `/data` JSON, `/update` when OTA enabled), sysinfo
+  renderers. Owns the global `WebServer http_server(80)`. HTTP runs on AP+STA
+  simultaneously, so sysinfo + OTA are reachable regardless of WiFi state.
+- `src/mqtt.cpp` — PicoMQTT broker (TCP 1883 + WebSocket 8883), also runs
+  on both AP and STA.
+- `src/ota.cpp` — web OTA updater. Compiled only when `OTA_WEB_UPDATER` is
+  defined (composed in via the `[ota]` build-flag block in `platformio.ini`,
+  added to default + release envs). Uses Arduino `Update.h`, expects
+  `*_ota.bin` (app-only image, not the merged `*_firmware.bin`), CSRF-checks
+  `Origin` vs `Host`, reboots on success.
+- `src/http_server.hpp` — shared `WebServer` extern, page CSS, and
+  `sysinfo_html` / `sysinfo_json` / `ota_setup` prototypes.
+- `src/credstore.hpp` — NVS `Preferences` wrapper for SSID/password.
 
-The README's "Project Structure" listing (mqtt.cpp, BLEScanner.cpp, i2cio,
-ringbuffer, …) is **aspirational** — those files don't exist yet on this
-branch. Current sources: `main.cpp`, `credstore.hpp`. Adjust expectations
-accordingly when reading the README.
+If older notes reference `BLEScanner.cpp`, `i2cio`, or `ringbuffer`, those
+are still aspirational — not present on this branch.
 
 ## Build-time injection (scripts/)
 
