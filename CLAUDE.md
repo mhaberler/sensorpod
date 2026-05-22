@@ -104,6 +104,7 @@ deep inside the BLE lib, not as a clean toolchain error.
   `platformio-m5stack.ini`. They are **not** included from `platformio.ini`;
   treat as reference snapshots, don't edit expecting effect.
 - `managed_components/` and `.pio/` are generated — never edit.
+- `untracked/` is local scratch space — ignore completely.
 - M5Unified vs vendor-specific M5 libs: envs ending in `-m5unified` use the
   unified abstraction (`-DUSE_M5UNIFIED` + `-DM5UNIFIED`); plain envs use
   `m5stack/M5Stack`/`M5Atom`/etc. Pick the variant the env was built around when
@@ -114,5 +115,6 @@ deep inside the BLE lib, not as a clean toolchain error.
 - `.github/workflows/build-firmware.yml` — manual dispatch, matrix over
   `[ci].envs` (or a JSON array input override).
 - `.github/workflows/release.yml` — tag-driven release builds.
+
 Both parse `platformio.ini` with Python `configparser`; keep the `[ci]` section
 syntax valid even when adding comments.
