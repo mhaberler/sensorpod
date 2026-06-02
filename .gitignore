@@ -5,3 +5,7 @@ firmware/
 managed_components
 .dummy
 src/idf_component.yml
+compile_commands.json
+.cache
+.pio-mcp-workspace/
+

@@ -1,0 +1,24 @@
+CompileFlags:
+  BuiltinHeaders: QueryDriver
+Diagnostics:
+  Suppress: [pp_expects_filename, unused-includes]
+---
+If:
+  PathMatch: .*\.ino
+CompileFlags:
+  Add:
+    - "-x"
+    - "c++"
+    - "-include"
+    - "Arduino.h"
+---
+CompileFlags:
+  Remove:
+    - -mlongcalls
+    - -mtext-section-literals
+    - -fno-tree-switch-conversion
+    - -free
+    - -fstrict-volatile-bitfields
+  Add:
+    - -ferror-limit=0
+    - --target=riscv32-esp-elf

@@ -11,24 +11,35 @@ target divergence is encoded in `platformio.ini` env composition, not in `#ifdef
 
 ## Build & Flash
 
-PlatformIO is the only supported build path. Default env is set in `[platformio]`
-of `platformio.ini` (currently `m5stack-nanoc6`).
+PlatformIO-only. Use **[Pioarduino](https://github.com/pioarduino/pioarduino)**
+(a PlatformIO fork with ESP32 enhancements):
 
 ```bash
+brew install pioarduino/pioarduino/pioarduino
+
 pio run                                # build default env
 pio run -e <env>                       # build specific env
 pio run -e <env> -t upload             # build + flash
 pio run -e <env> -t upload -t monitor  # flash + open 115200 serial
-pio run -e <env> -t firmware           # build merged single-binary image (drops into firmware/)
+pio run -e <env> -t firmware           # merged single-binary image → firmware/
+pio run -t compiledb [-e <env>]        # generate compile_commands.json
 pio pkg update                         # refresh lib_deps from upstream HEADs
+clang-format -i src/*.cpp src/*.hpp    # format C/C++ after edits
 ```
 
-Env names live in `[env:*]` sections of `platformio.ini`. CI-built envs are
-listed under the non-PlatformIO `[ci]` section (parsed by `.github/workflows/*.yml`
-via `configparser`) — update both when adding a release-target board.
+Default env set in `[platformio]` of `platformio.ini` (currently `m5stack-nanoc6`).
+Active board envs: `m5stack-nanoc6` (default), `esp32p4_waveshare_devkit` (both in CI).
 
-WiFi creds at build time are optional; runtime Improv-WiFi (BLE + serial)
-provisioning is the normal flow and writes to `Preferences` (NVS).
+Env names live in `[env:*]` sections. CI-built envs listed in `[ci].envs`
+(parsed by `.github/workflows/*.yml` via `configparser`) — **update both** when
+adding a release-target board.
+
+**Firmware artifacts:**
+- `*_firmware.bin` — merged image (bootloader + partitions + app), USB-only flash via esptool
+- `*_ota.bin` — app slot only, use for OTA web updater on `/update` page
+
+WiFi creds optional at build time; runtime Improv-WiFi (serial) provisioning
+normal. Creds stored in NVS `Preferences` namespace `wifi-creds`.
 
 ## Architecture
 
@@ -99,16 +110,32 @@ deep inside the BLE lib, not as a clean toolchain error.
 
 ## Conventions
 
-- `.clang-format` is customized — apply it when editing C/C++ (`clang-format -i`).
-- Two extra ini files exist as history: `platformio-orig.ini`,
-  `platformio-m5stack.ini`. They are **not** included from `platformio.ini`;
-  treat as reference snapshots, don't edit expecting effect.
-- `managed_components/` and `.pio/` are generated — never edit.
-- `untracked/` is local scratch space — ignore completely.
+- `.clang-format` customized — run `clang-format -i src/*.cpp src/*.hpp` when editing C/C++.
+- Two extra ini files as history: `platformio-orig.ini`, `platformio-m5stack.ini`.
+  **Not** included; treat as reference, never edit.
+- `managed_components/` + `.pio/` generated — never edit.
+- `untracked/` is local scratch space.
+- `compile_commands.json` is gitignored. Regenerate after env switch or lib update:
+  `pio run -t compiledb [-e <env>]`.
 - M5Unified vs vendor-specific M5 libs: envs ending in `-m5unified` use the
-  unified abstraction (`-DUSE_M5UNIFIED` + `-DM5UNIFIED`); plain envs use
-  `m5stack/M5Stack`/`M5Atom`/etc. Pick the variant the env was built around when
-  adding board code.
+  unified abstraction (`-DUSE_M5UNIFIED`); plain envs use `m5stack/M5Stack`/`m5stack/M5Atom`/etc.
+  Pick the variant the env was built around when adding board code.
+- Build flags: `[release]` + `[debug]` base configs in platformio.ini pull flags from
+  `[env]` base and sub-blocks like `[ota]`, `[improv]`, `[ghota]`. Read the
+  inheritance chain (`extends = …`) when troubleshooting build-flag composition.
+
+## IDE / clangd
+
+Uses `clangd` (not MS C/C++ IntelliSense) — real clang frontend needed for
+multi-chip `#ifdef` branches.
+
+- `.clangd` scrubs Xtensa/GCC-only flags + sets `--target=riscv32-esp-elf`
+  (default env `m5stack-nanoc6`). Switch triple for Xtensa envs:
+  classic ESP32 → `xtensa-esp32-elf`, S3 → `xtensa-esp32s3-elf`.
+- Generate `compile_commands.json`: `pio run -t compiledb [-e <env>]`.
+  Regenerate after env switch or lib update.
+- Disable MS IntelliSense (avoids double-parse):
+  `"C_Cpp.intelliSenseEngine": "disabled"`.
 
 ## CI
 
