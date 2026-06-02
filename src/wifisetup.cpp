@@ -5,11 +5,12 @@
 #include <ESP_HostedOTA.h>
 
 #include "credstore.hpp"
+#include "deviceconfig.hpp"
 #include "mdns.h"
 #include "http_server.hpp"
 #include "mdns_state.hpp"
 
-extern PicoMQTT::Server mqtt;
+extern bool is_broker_mode;
 
 String hostName;
 
@@ -68,6 +69,20 @@ void stopSta() {
     WiFi.STA.disconnect(false, true);
 }
 
+static void start_ap() {
+    String apSSID = hostName;
+    String apPASS = hostName;
+    log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
+    WiFi.AP.create(apSSID, apPASS);
+    WiFi.AP.enableIPv6();
+    WiFi.AP.begin();
+    WiFi.AP.enableDhcpCaptivePortal();
+}
+
+static void start_sta(const String& ssid, const String& pass) {
+    startStaAttempt(ssid, pass);
+}
+
 void wifi_setup() {
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
     WiFi.setPins(BOARD_SDIO_ESP_HOSTED_CLK, BOARD_SDIO_ESP_HOSTED_CMD,
@@ -76,50 +91,64 @@ void wifi_setup() {
                  BOARD_SDIO_ESP_HOSTED_RESET);
 #endif
 
-
     WiFi.mode(WIFI_AP_STA);
     WiFi.STA.begin(false);
     WiFi.STA.setAutoReconnect(true);
 
-    String apSSID = hostName;
-    String apPASS = hostName;
+    // AP always on (in both Broker and Client modes)
+    start_ap();
 
-    log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
-    WiFi.AP.create(apSSID, apPASS);
-    WiFi.AP.enableIPv6();
-    WiFi.AP.begin();
-    WiFi.AP.enableDhcpCaptivePortal();
+    // Branch on role for STA and mDNS setup
+    if (is_broker_mode) {
+        // Broker mode: STA optional
+        String ssid, pass;
+        if (loadWiFiCredentials(ssid, pass)) {
+            log_w("Broker mode: loaded creds, starting STA");
+            start_sta(ssid, pass);
+        } else {
+            log_w("Broker mode: no creds, AP-only");
+        }
+    } else {
+        // Client mode: STA required
+        String ssid, pass;
+        if (loadWiFiCredentials(ssid, pass)) {
+            log_w("Client mode: loaded creds, starting STA");
+            start_sta(ssid, pass);
+        } else {
+            log_w("Client mode: no creds, Improv provisioning required");
+        }
+    }
 
     webserver_setup();
 
+    // mDNS: Broker mode announces, Client mode will discover
     if (MDNS.begin(hostName)) {
         log_i("starting MDNS for %s", hostName.c_str());
         MDNS.enableWorkstation();
-        MDNS.addService("mqtt", "tcp", MQTT_PORT);
-        MDNS.addService("mqtt-ws", "tcp", MQTTWS_PORT);
-        MDNS.addService("http", "tcp", 80);
-        MDNS.addServiceTxt("mqtt-ws", "tcp", "path", "/mqtt");
 
-        mqttInstance   = "TCP-" + hostName;
-        mqttWsInstance = "WS-" + hostName;
-        httpInstance   = hostName;
-        mdns_service_instance_name_set("_mqtt", "_tcp", mqttInstance.c_str());
-        mdns_service_instance_name_set("_mqtt-ws", "_tcp", mqttWsInstance.c_str());
+        if (is_broker_mode) {
+            // Broker mode: announce self
+            MDNS.addService("mqtt", "tcp", MQTT_PORT);
+            MDNS.addService("mqtt-ws", "tcp", MQTTWS_PORT);
+            MDNS.addService("http", "tcp", 80);
+            MDNS.addServiceTxt("mqtt-ws", "tcp", "path", "/mqtt");
 
-        add_mdns(mqttInstance.c_str(),   "_mqtt",    "_tcp", MQTT_PORT);
-        add_mdns(mqttWsInstance.c_str(), "_mqtt-ws", "_tcp", MQTTWS_PORT, "path=/mqtt");
-        add_mdns(httpInstance.c_str(),   "_http",    "_tcp", 80);
+            mqttInstance   = "TCP-" + hostName;
+            mqttWsInstance = "WS-" + hostName;
+            httpInstance   = hostName;
+            mdns_service_instance_name_set("_mqtt", "_tcp", mqttInstance.c_str());
+            mdns_service_instance_name_set("_mqtt-ws", "_tcp", mqttWsInstance.c_str());
+
+            add_mdns(mqttInstance.c_str(),   "_mqtt",    "_tcp", MQTT_PORT);
+            add_mdns(mqttWsInstance.c_str(), "_mqtt-ws", "_tcp", MQTTWS_PORT, "path=/mqtt");
+            add_mdns(httpInstance.c_str(),   "_http",    "_tcp", 80);
+        } else {
+            // Client mode: just enable workstation, no announcements
+            log_d("Client mode: mDNS workstation enabled for discovery");
+        }
     }
 
     Network.onEvent(onNetworkEvent);
-
-    String s, p;
-    if (loadWiFiCredentials(s, p)) {
-        log_w("loaded creds, starting STA");
-        startStaAttempt(s, p);
-    } else {
-        log_w("no creds, AP-only");
-    }
 }
 
 void wifi_loop() {

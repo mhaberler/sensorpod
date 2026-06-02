@@ -11,8 +11,10 @@
 #include <Wire.h>
 #include <optional>
 #include "credstore.hpp"
+#include "deviceconfig.hpp"
 #include "led.hpp"
 #include "listenv.hpp"
+#include "mqtt_device.hpp"
 
 #ifdef BUILD_TAG
     #define FW_VERSION  BUILD_TAG
@@ -35,9 +37,11 @@ Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 bool lox_present;
 
 #include "mqtt.hpp"
+#include "mqtt_client.hpp"
 ImprovWiFi improvSerial(&Serial);
 
 extern String hostName;
+bool is_broker_mode = true;
 
 void wifi_setup(void);
 void wifi_loop(void);
@@ -76,6 +80,10 @@ void setup() {
     hostName = WiFi.getHostname();
     ledSetup();
 
+    // Read device role early
+    is_broker_mode = DeviceConfig::isBrokerMode();
+    log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
+
 #if defined(USE_M5UNIFIED)
     auto cfg = M5.config();
     cfg.output_power = true;
@@ -91,7 +99,18 @@ void setup() {
     // i2c_scan(Wire);
     lox_present = lox_init(Wire);
     wifi_setup();
-    mqtt.begin();
+
+    // Initialize MQTT device based on role
+    if (is_broker_mode) {
+        mqtt_device = (MQTTDevice*)&mqtt_broker;
+        mqtt_device->begin();
+        log_d("Broker mode initialized");
+    } else {
+        mqtt_device = (MQTTDevice*)&mqtt_client;
+        mqtt_device->begin();
+        log_d("Client mode initialized");
+    }
+
     blinkLed(100, 5);
 }
 
@@ -110,9 +129,9 @@ void loop() {
         if (range.has_value()) {
             JsonDocument doc;
             doc["distance_mm"] = *range;
-            auto publish = mqtt.begin_publish("VL53L0X", measureJson(doc));
-            serializeJson(doc, publish);
-            publish.send();
+            String payload;
+            serializeJson(doc, payload);
+            mqtt_publish("VL53L0X", payload.c_str());
         } else {
             numClicks = 0;
         }
@@ -126,12 +145,14 @@ void loop() {
         doc["cpu_temperature"] = temperatureRead();
         doc["rssi"] = WiFi.RSSI();
 
-        auto publish = mqtt.begin_publish("status", measureJson(doc));
-        serializeJson(doc, publish);
-        publish.send();
+        String payload;
+        serializeJson(doc, payload);
+        mqtt_publish("status", payload.c_str());
     }
 
-    mqtt.loop();
+    if (mqtt_device) {
+        mqtt_device->loop();
+    }
     wifi_loop();
     yield();
 }
