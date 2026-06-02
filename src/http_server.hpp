@@ -17,6 +17,8 @@ static constexpr const char *HTTP_PAGE_STYLE =
 
 void sysinfo_html(String &out);
 void sysinfo_json(String &out);
+void webserver_setup();
+void webserver_loop();
 
 #ifdef OTA_WEB_UPDATER
 void ota_setup(WebServer &srv);

@@ -76,11 +76,15 @@ are still aspirational — not present on this branch.
 `extra_scripts` in `[env]` runs these in order — read them before touching the
 build pipeline:
 
-- `pre:inject_build_info.py` — defines `BUILD_SHA`, `BUILD_DATE`, and in CI
-  `BUILD_REPO` / `BUILD_TAG` / `BUILD_FIRMWARE_URI`. Also auto-derives
-  `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` from `git remote get-url origin` and
-  `SGO_DEFAULT_BIN` from the computed OTA filename. Code consuming these macros
-  must `#ifdef`-guard — they're absent outside git/CI.
+- `pre:inject_build_info.py` — defines:
+  - Always: `BUILD_SHA`, `BUILD_DATE`, `BUILD_ENV`, `BUILD_BOARD`, `BUILD_TYPE`,
+    `BUILD_MCU`, `BUILD_PARTITIONS`, `BUILD_FLASH_SIZE`, `BUILD_FRAMEWORK`
+  - Conditional: `BUILD_BOARD_NAME` (if board JSON has name), `BUILD_VARIANT`
+    (if board defines it)
+  - CI only: `BUILD_REPO` / `BUILD_TAG` / `BUILD_FIRMWARE_URI`
+  - Auto-derived: `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` from git remote,
+    `SGO_DEFAULT_BIN` from computed OTA filename.
+  Code consuming CI-only macros must `#ifdef`-guard.
 - `inject_lib_versions.py` — turns each name in `custom_inject_lib_versions`
   (e.g. `"Improv WiFi Library" OneButton`) into a `<LIBNAME>_VERSION` define
   scraped from `library.json`.

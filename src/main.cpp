@@ -12,6 +12,7 @@
 #include <optional>
 #include "credstore.hpp"
 #include "led.hpp"
+#include "listenv.hpp"
 
 #ifdef BUILD_TAG
     #define FW_VERSION  BUILD_TAG
@@ -37,6 +38,7 @@ bool lox_present;
 ImprovWiFi improvSerial(&Serial);
 
 extern String macAddress;
+extern String hostName;
 
 void wifi_setup(void);
 void wifi_loop(void);
@@ -73,6 +75,8 @@ void startImprovSerialProvisioning() {
 void setup() {
     Serial.begin(115200);
     delay(3000);
+    listEnv();
+    hostName = WiFi.getHostname();
     ledSetup();
 
 #if defined(USE_M5UNIFIED)
