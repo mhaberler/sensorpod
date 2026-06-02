@@ -15,7 +15,7 @@ static constexpr const char *HTTP_PAGE_STYLE =
   "progress{width:300px}"
   "</style>";
 
-void sysinfo_html(String &out);
+void sysinfo_html(String &out, bool is_broker_mode);
 void sysinfo_json(String &out);
 void webserver_setup();
 void webserver_loop();

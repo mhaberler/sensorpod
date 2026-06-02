@@ -58,19 +58,40 @@ static void json_kv_i(String &out, const char *k, int32_t v, bool &first) {
     appendf(out, "\"%s\":%d", k, (int)v);
 }
 
-void sysinfo_html(String &out) {
+void sysinfo_html(String &out, bool is_broker_mode) {
     const esp_partition_t *running = esp_ota_get_running_partition();
     const esp_partition_t *next    = esp_ota_get_next_update_partition(NULL);
 
     out += "<!DOCTYPE HTML><html><head><meta charset='utf-8'>";
     appendf(out, "<title>%s</title>", hostName.c_str());
     out += HTTP_PAGE_STYLE;
+    out += "<style>.config-section{background:#f5f5f5;padding:1em;margin:1em 0;border-radius:5px}"
+           ".config-btn{padding:8px 16px;margin:4px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer}"
+           ".config-btn:hover{background:#0056b3}"
+           ".config-btn.danger{background:#dc3545}"
+           ".config-btn.danger:hover{background:#c82333}"
+           "</style>";
     out += "</head><body>";
     appendf(out, "<h1>%s</h1><p>", hostName.c_str());
 #ifdef OTA_WEB_UPDATER
     out += "<a href='/update'>Firmware update</a> | ";
 #endif
     out += "<a href='/data'>JSON</a></p>";
+
+    // Device Configuration Section
+    out += "<div class='config-section'><h3>Device Configuration</h3>";
+    appendf(out, "<p><strong>Current Role:</strong> %s</p>", is_broker_mode ? "Broker Mode" : "Client Mode");
+    appendf(out, "<form id='roleForm'><input type='hidden' name='role' value='%s'>", is_broker_mode ? "client" : "broker");
+    appendf(out, "<label><input type='checkbox' id='roleToggle' %s> Switch to %s Mode</label><br>",
+            "", is_broker_mode ? "Client" : "Broker");
+    out += "<button type='button' class='config-btn' onclick='switchRole()'>Save &amp; Restart</button> "
+           "<button type='button' class='config-btn danger' onclick='reboot()'>Reboot</button></form>";
+    out += "<script>"
+           "function switchRole(){var newRole=document.getElementById('roleToggle').checked?'client':'broker';"
+           "fetch('/api/set-role',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'role='+newRole})"
+           ".then(r=>r.json()).then(d=>{alert('Role change in progress, device restarting...')}).catch(e=>alert('Error: '+e))}"
+           "function reboot(){fetch('/api/reboot',{method:'POST'}).then(r=>r.json()).then(d=>{alert('Rebooting...')}).catch(e=>alert('Error: '+e))}"
+           "</script></div>";
 
     out += "<h3>Identity</h3><ul>";
     appendf(out, "<li>FW: %s</li>", FW_VERSION);
