@@ -1,4 +1,4 @@
-#if defined(M5UNIFIED)
+#if defined(USE_M5UNIFIED)
     #include <M5Unified.h>
 #endif
 #include <ImprovWiFiBLE.h>
@@ -11,6 +11,7 @@
 #include <Wire.h>
 #include <optional>
 #include "credstore.hpp"
+#include "led.hpp"
 
 #ifdef BUILD_TAG
     #define FW_VERSION  BUILD_TAG
@@ -35,6 +36,8 @@ bool lox_present;
 #include "mqtt.hpp"
 ImprovWiFi improvSerial(&Serial);
 
+extern String macAddress;
+
 void wifi_setup(void);
 void wifi_loop(void);
 void startStaAttempt(const String &ssid, const String &pass);
@@ -45,8 +48,6 @@ bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
 std::optional<uint16_t> lox_poll(TwoWire &wire);
-void getMacAddress(String &macStr);
-void blinkLed(int d, int times);
 
 void onImprovWiFiErrorCb(ImprovTypes::Error err) {
     log_e("Improv error %d", err);
@@ -62,8 +63,7 @@ void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
 
 void startImprovSerialProvisioning() {
     String mac;
-    getMacAddress(mac);
-    String devId = String(HOSTNAME) + "_" + mac;
+    String devId = String(HOSTNAME) + "_" + macAddress;
     improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib", IMPROV_WIFI_LIBRARY_VERSION, devId.c_str(), "http://{LOCAL_IPV4}");
     improvSerial.onImprovError(onImprovWiFiErrorCb);
     improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
@@ -73,15 +73,15 @@ void startImprovSerialProvisioning() {
 void setup() {
     Serial.begin(115200);
     delay(3000);
-    pinMode(LED_BLUE, OUTPUT);
+    ledSetup();
 
-#if defined(M5UNIFIED)
+#if defined(USE_M5UNIFIED)
     auto cfg = M5.config();
     cfg.output_power = true;
     M5.begin(cfg);
-    M5.Ex_I2C.begin();
-    Wire.end();
-    Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
+    // M5.Ex_I2C.begin();
+    // Wire.end();
+    // Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
 #else
     Wire.begin(SDA_PIN,SCL_PIN, 400000);
 #endif
@@ -99,7 +99,7 @@ void loop() {
 
     unsigned long now = millis();
     button_loop();
-#if defined(M5UNIFIED)
+#if defined(USE_M5UNIFIED)
     M5.update();
 #endif
     static unsigned long last_lox_poll = 0;
@@ -133,15 +133,6 @@ void loop() {
     mqtt.loop();
     wifi_loop();
     yield();
-}
-
-void blinkLed(int d, int times) {
-    for (int j = 0; j < times; j++) {
-        digitalWrite(LED_BLUE, HIGH);
-        delay(d);
-        digitalWrite(LED_BLUE, LOW);
-        delay(d);
-    }
 }
 
 bool i2c_probe(TwoWire &w, uint8_t addr) {

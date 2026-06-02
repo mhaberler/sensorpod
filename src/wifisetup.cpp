@@ -28,11 +28,11 @@
 
 extern PicoMQTT::Server mqtt;
 
+String macAddress;
+
 static uint8_t prev_clients = 255;
 
 WebServer http_server(80);
-
-String macAddress;
 
 struct MdnsAnnounce {
     const char *instance;
@@ -240,13 +240,6 @@ void sysinfo_json(String &out) {
     out += '}';
 }
 
-void getMacAddress(String &macStr) {
-    uint8_t mac[6];
-    Network.macAddress(mac);
-    macStr = String(mac[0], HEX) + String(mac[1], HEX) + String(mac[2], HEX) +
-             String(mac[3], HEX) + String(mac[4], HEX) + String(mac[5], HEX);
-    macStr.toUpperCase();
-}
 
 static void onNetworkEvent(arduino_event_id_t event) {
     switch (event) {
@@ -287,14 +280,17 @@ void wifi_setup() {
                  BOARD_SDIO_ESP_HOSTED_RESET);
 #endif
 
-    getMacAddress(macAddress);
-    log_w("MAC address=%s", macAddress.c_str());
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(true);
+    macAddress = WiFi.macAddress();
+    log_w("MAC address=%s", macAddress.c_str());
+
+    macAddress.replace(":", "");
 
     String apSSID = "ESP32-" + macAddress;
     String apPASS = HOSTNAME;
+
     log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
     WiFi.AP.create(apSSID, apPASS);
     WiFi.AP.enableIPv6();
