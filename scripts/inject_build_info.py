@@ -34,6 +34,7 @@ env: Any = DefaultEnvironment()
 
 def define_str(name, value):
     env.Append(CPPDEFINES=[(name, '\\"' + value + '\\"')])
+    print(f"inject_build_info: {name}={value}")
 
 
 def is_defined(name):
