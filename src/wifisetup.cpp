@@ -282,8 +282,10 @@ void wifi_setup() {
 
 
     WiFi.mode(WIFI_AP_STA);
-    WiFi.setAutoReconnect(true);
-    macAddress = WiFi.macAddress();
+    WiFi.STA.begin(false);
+    WiFi.STA.setAutoReconnect(true);
+
+    macAddress = WiFi.STA.macAddress();
     log_w("MAC address=%s", macAddress.c_str());
 
     macAddress.replace(":", "");
