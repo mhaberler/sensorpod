@@ -11,7 +11,6 @@
 
 extern PicoMQTT::Server mqtt;
 
-String macAddress;
 String hostName;
 
 static uint8_t prev_clients = 255;
@@ -82,13 +81,8 @@ void wifi_setup() {
     WiFi.STA.begin(false);
     WiFi.STA.setAutoReconnect(true);
 
-    macAddress = WiFi.STA.macAddress();
-    log_w("MAC address=%s", macAddress.c_str());
-
-    macAddress.replace(":", "");
-
-    String apSSID = "ESP32-" + macAddress;
-    String apPASS = HOSTNAME;
+    String apSSID = hostName;
+    String apPASS = hostName;
 
     log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
     WiFi.AP.create(apSSID, apPASS);
@@ -98,17 +92,17 @@ void wifi_setup() {
 
     webserver_setup();
 
-    if (MDNS.begin(HOSTNAME)) {
-        log_i("starting MDNS for %s", HOSTNAME);
+    if (MDNS.begin(hostName)) {
+        log_i("starting MDNS for %s", hostName.c_str());
         MDNS.enableWorkstation();
         MDNS.addService("mqtt", "tcp", MQTT_PORT);
         MDNS.addService("mqtt-ws", "tcp", MQTTWS_PORT);
         MDNS.addService("http", "tcp", 80);
         MDNS.addServiceTxt("mqtt-ws", "tcp", "path", "/mqtt");
 
-        mqttInstance   = HOSTNAME "-TCP-" + macAddress;
-        mqttWsInstance = HOSTNAME "-WS-" + macAddress;
-        httpInstance   = HOSTNAME;
+        mqttInstance   = "TCP-" + hostName;
+        mqttWsInstance = "WS-" + hostName;
+        httpInstance   = hostName;
         mdns_service_instance_name_set("_mqtt", "_tcp", mqttInstance.c_str());
         mdns_service_instance_name_set("_mqtt-ws", "_tcp", mqttWsInstance.c_str());
 

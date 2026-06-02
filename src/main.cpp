@@ -37,7 +37,6 @@ bool lox_present;
 #include "mqtt.hpp"
 ImprovWiFi improvSerial(&Serial);
 
-extern String macAddress;
 extern String hostName;
 
 void wifi_setup(void);
@@ -64,9 +63,7 @@ void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
 }
 
 void startImprovSerialProvisioning() {
-    String mac;
-    String devId = String(HOSTNAME) + "_" + macAddress;
-    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib", IMPROV_WIFI_LIBRARY_VERSION, devId.c_str(), "http://{LOCAL_IPV4}");
+    improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib", IMPROV_WIFI_LIBRARY_VERSION, hostName.c_str(), "http://{LOCAL_IPV4}");
     improvSerial.onImprovError(onImprovWiFiErrorCb);
     improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
 }

@@ -53,10 +53,16 @@ Multi-file Arduino sketch. Current sources:
   elsewhere). 5× click on the button clears creds and restarts (factory
   reset); long-press wipes creds without reboot.
 - `src/wifisetup.cpp` — AP + STA bring-up, mDNS announcements
-  (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`), HTTP server registration
-  (`/` sysinfo HTML, `/data` JSON, `/update` when OTA enabled), sysinfo
-  renderers. Owns the global `WebServer http_server(80)`. HTTP runs on AP+STA
-  simultaneously, so sysinfo + OTA are reachable regardless of WiFi state.
+  (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`). Brings up `WebServer http_server(80)`
+  via `webserver_setup()`. WiFi runs on AP+STA simultaneously. AP password is `hostName`
+  (runtime hostname string).
+- `src/webserver.cpp` — HTTP server lifecycle. `webserver_setup()` registers routes
+  (`/` sysinfo HTML, `/data` JSON, `/update` when OTA enabled) and calls `begin()`.
+  `webserver_loop()` handles incoming requests.
+- `src/content.cpp` — HTML/JSON sysinfo generation (`sysinfo_html`, `sysinfo_json`).
+  Uses `hostName` (runtime string) and all injected `BUILD_*` macros.
+- `src/mdns_state.hpp` — shared `MdnsAnnounce` struct and `mdns_services[]`/`mdns_count`
+  externs, used by both wifisetup and content.
 - `src/mqtt.cpp` — PicoMQTT broker (TCP 1883 + WebSocket 8883), also runs
   on both AP and STA.
 - `src/ota.cpp` — web OTA updater. Compiled only when `OTA_WEB_UPDATER` is
@@ -64,8 +70,9 @@ Multi-file Arduino sketch. Current sources:
   added to default + release envs). Uses Arduino `Update.h`, expects
   `*_ota.bin` (app-only image, not the merged `*_firmware.bin`), CSRF-checks
   `Origin` vs `Host`, reboots on success.
-- `src/http_server.hpp` — shared `WebServer` extern, page CSS, and
-  `sysinfo_html` / `sysinfo_json` / `ota_setup` prototypes.
+- `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
+- `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
+  prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).
 - `src/credstore.hpp` — NVS `Preferences` wrapper for SSID/password.
 
 If older notes reference `BLEScanner.cpp`, `i2cio`, or `ringbuffer`, those

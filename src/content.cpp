@@ -20,6 +20,7 @@
 #ifndef BUILD_DATE
     #define BUILD_DATE "unknown"
 #endif
+extern String hostName;
 
 static void appendf(String &out, const char *fmt, ...) {
     char buf[160];
@@ -62,10 +63,10 @@ void sysinfo_html(String &out) {
     const esp_partition_t *next    = esp_ota_get_next_update_partition(NULL);
 
     out += "<!DOCTYPE HTML><html><head><meta charset='utf-8'>";
-    appendf(out, "<title>%s</title>", HOSTNAME);
+    appendf(out, "<title>%s</title>", hostName.c_str());
     out += HTTP_PAGE_STYLE;
     out += "</head><body>";
-    appendf(out, "<h1>%s</h1><p>", HOSTNAME);
+    appendf(out, "<h1>%s</h1><p>", hostName.c_str());
 #ifdef OTA_WEB_UPDATER
     out += "<a href='/update'>Firmware update</a> | ";
 #endif
@@ -147,7 +148,7 @@ void sysinfo_html(String &out) {
     appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
     appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
     appendf(out, "<li>AP clients: %u</li>", (unsigned)WiFi.softAPgetStationNum());
-    appendf(out, "<li>mDNS: %s.local", HOSTNAME);
+    appendf(out, "<li>mDNS: %s.local", hostName.c_str());
     if (mdns_count) {
         out += "<ul>";
         for (size_t i = 0; i < mdns_count; i++) {
@@ -169,7 +170,7 @@ void sysinfo_json(String &out) {
     const esp_partition_t *next    = esp_ota_get_next_update_partition(NULL);
     bool first = true;
     out += '{';
-    json_kv_str(out, "hostname", HOSTNAME, first);
+    json_kv_str(out, "hostName.c_str()", hostName.c_str(), first);
     json_kv_str(out, "fw_version", FW_VERSION, first);
     json_kv_str(out, "build_sha", BUILD_SHA, first);
     json_kv_str(out, "build_date", BUILD_DATE, first);
