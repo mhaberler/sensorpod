@@ -1,4 +1,5 @@
 #include "mqtt_client.hpp"
+#include <WiFi.h>
 
 MQTTClient mqtt_client;
 
@@ -6,30 +7,33 @@ void MQTTClient::begin() {
   log_d("MQTTClient::begin() — Client mode (awaiting connection via discover)");
   retry_count = 0;
   retry_backoff_ms = 1000;
+  pending_host = "";
 }
 
 void MQTTClient::loop() {
-  if (mqtt.connected()) {
-    mqtt.loop();
-    if (retry_count > 0) {
-      log_i("MQTT reconnected (after %u retries)", retry_count);
-      retry_count = 0;
-      retry_backoff_ms = 1000;
-    }
-  } else {
-    mqtt.loop();  // Still call loop even when disconnected (handles pending operations)
-
-    // Retry with exponential backoff
+  // Attempt pending connect once WiFi is up
+  if (!mqtt.connected() && pending_host.length() > 0 && WiFi.status() == WL_CONNECTED) {
     unsigned long now = millis();
-    if (now - last_retry_time > retry_backoff_ms && retry_count < MAX_RETRIES) {
-      log_w("MQTT retry %u/%u (backoff: %ums)", retry_count + 1, MAX_RETRIES, retry_backoff_ms);
-      // mqtt.connect() will be called by main loop's rediscovery logic
-      retry_count++;
-      last_retry_time = now;
-
-      // Exponential backoff: 1s → 2s → 4s → 8s → 16s → cap at 60s
-      retry_backoff_ms = (retry_backoff_ms < MAX_BACKOFF_MS) ? (retry_backoff_ms * 2) : MAX_BACKOFF_MS;
+    if (now - last_retry_time > retry_backoff_ms) {
+      if (retry_count < MAX_RETRIES) {
+        log_i("MQTT connect attempt %u/%u → %s:%u", retry_count + 1, MAX_RETRIES,
+              pending_host.c_str(), pending_port);
+        mqtt.connect(pending_host.c_str(), pending_port);
+        retry_count++;
+        last_retry_time = now;
+        retry_backoff_ms = (retry_backoff_ms < MAX_BACKOFF_MS) ? retry_backoff_ms * 2 : MAX_BACKOFF_MS;
+      } else if (retry_count >= MAX_RETRIES) {
+        log_w("MQTT max retries exhausted, awaiting rediscovery");
+      }
     }
+  }
+
+  mqtt.loop();
+
+  if (mqtt.connected() && retry_count > 0) {
+    log_i("MQTT connected after %u retries", retry_count);
+    retry_count = 0;
+    retry_backoff_ms = 1000;
   }
 }
 
@@ -47,8 +51,10 @@ void MQTTClient::publish(const char* topic, const char* payload) {
 }
 
 void MQTTClient::connect(const char* host, uint16_t port) {
-  log_i("MQTTClient connecting to %s:%u", host, port);
-  mqtt.connect(host, port);
-  last_retry_time = millis();
-  retry_count = 0;  // Reset retry count on new connection attempt
+  pending_host = host;
+  pending_port = port;
+  retry_count = 0;
+  retry_backoff_ms = 1000;
+  last_retry_time = 0;  // trigger immediately on next loop
+  log_d("MQTTClient::connect() — pending %s:%u (will attempt when WiFi ready)", host, port);
 }

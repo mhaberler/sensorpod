@@ -162,12 +162,19 @@ void loop() {
         mqtt_device->loop();
     }
 
-    // Client mode: periodic mDNS discovery
+    // Client mode: periodic mDNS discovery and failover
     if (!is_broker_mode) {
         static unsigned long last_discovery = 0;
-        if (now - last_discovery > 10000) {  // Every 10s
+        if (mqtt_client.needs_rediscovery() || now - last_discovery > 10000) {
             last_discovery = now;
-            mdns_client.discover_mqtt_brokers();
+            mqtt_client.clear_broker();
+            auto brokers = mdns_client.discover_mqtt_brokers();
+            if (!brokers.empty()) {
+                log_i("Client mode: discovered broker %s at %s:%u, connecting",
+                      brokers[0].instance_name.c_str(), brokers[0].ip.c_str(), brokers[0].port);
+                DeviceConfig::setSelectedBrokerHostname(brokers[0].ip);
+                mqtt_client.connect(brokers[0].ip.c_str(), brokers[0].port);
+            }
         }
     }
 
