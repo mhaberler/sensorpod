@@ -108,24 +108,38 @@ Single firmware supports two runtime modes, switchable via web UI without reflas
 - `src/deviceconfig.hpp` — NVS wrapper (`getBrokerMode`, `setBrokerMode`, `getSelectedBrokerHostname`, `setSelectedBrokerHostname`)
 - `src/mqtt_device.hpp` — abstract base for polymorphic Broker/Client handling
 - `src/mqtt.hpp/cpp` — `CustomMQTTServer` extends `MQTTDevice`, wraps PicoMQTT::Server
-- `src/mqtt_client.hpp/cpp` — `MQTTClient` extends `MQTTDevice`, wraps PicoMQTT::Client with retry logic
-- `src/mdns_client.hpp/cpp` — `MDNSClient::discover_mqtt_brokers()` queries mDNS for brokers
-- `src/main.cpp` — reads role at boot, initializes appropriate `mqtt_device`, runs mDNS discovery loop
+- `src/mqtt_client.hpp/cpp` — `MQTTClient` extends `MQTTDevice`, wraps PicoMQTT::Client with deferred connect (pending_host/port), exponential backoff retry, failover detection
+- `src/mdns_client.hpp/cpp` — `MDNSClient::discover_mqtt_brokers()` queries mDNS, spawns async task (`start_async_discovery()`) to avoid blocking main loop
+- `src/main.cpp` — reads role at boot, initializes appropriate `mqtt_device`, periodically kicks off async mDNS discovery (non-blocking), applies `resolve_broker_host()` to append `.local` to bare hostnames
 - `src/wifisetup.cpp` — role-branching WiFi init (Broker: optional STA, Client: required STA)
 - `src/webserver.cpp` — `/api/set-role` and `/api/set-broker` endpoints
-- `src/content.cpp` — web UI role toggle, broker selection section (Client mode only)
+- `src/content.cpp` — web UI role toggle, broker selection dropdown populated from `/data` JSON (`discovered_brokers` array)
 - `src/led.hpp/cpp` — status feedback (GREEN: WiFi+broker OK, ORANGE/SLOW: broker down, RED/FAST: WiFi down)
 
 **Topic Prefixing:**
 All MQTT publishes go through `mqtt_publish(const char *topic, const char *payload)` wrapper
 (in `src/mqtt.cpp`), which auto-prepends `hostName/` to topic. Ensures consistency across modes.
 
-**Failover & Resilience:**
-Client mode retry strategy:
-- Exponential backoff on broker disconnect: 1s → 2s → 4s → 8s → 16s → 60s (capped)
-- Max 5 retry attempts before rediscovery
-- Resets backoff on successful connection
+**Connection & Failover:**
+
+*Deferred Connect:* `mqtt_client.connect()` stores `pending_host/port` and returns immediately; actual TCP connect happens from `loop()` once WiFi has an IP (avoids race condition on boot).
+
+*Retry Logic:* On broker disconnect:
+- Exponential backoff: 1s → 2s → 4s → 8s → 16s → 60s (capped)
+- Max 5 retry attempts before triggering rediscovery
+- Resets backoff on successful reconnection
 - Logs all retry attempts for debugging
+
+*Hostname Resolution:* Bare mDNS labels (e.g., `esp32c6-4483D8`, `sensorpod`) get `.local` appended before connecting. FQDNs and IPs pass through unchanged.
+
+*Rediscovery:* When retries exhausted, `main.cpp` kicks off async mDNS discovery (runs on FreeRTOS background task to prevent blocking `improvSerial.handleSerial()`). Connects to first discovered broker.
+
+**Naming & mDNS:**
+- Device hostname: set by `WiFi.getHostname()` (usually MAC-derived like `esp32c6-5B0A24`)
+- mDNS instance: announced as `{hostname}-{service}` (e.g., `esp32c6-5B0A24-TCP-083AF24483D8`)
+- Service type: `_mqtt._tcp.local` for MQTT broker
+- All topics in Broker mode: `{hostname}/VL53L0X`, `{hostname}/status`
+- All topics in Client mode: same prefix, published to remote broker
 
 **Testing:**
 See `validation-checklist.md` for 8 test scenarios. Blockers: A (fresh Broker), B (role switch),
