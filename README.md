@@ -1,8 +1,8 @@
 # SensorPod
 
-A PlatformIO-based firmware for ESP32 sensor devices with WiFi, MQTT, and I2C sensor integration.
+A PlatformIO-based firmware for ESP32 sensor devices with dual-role MQTT (Broker/Client), WiFi, and I2C sensor integration.
 
-It is a demonstration how to use [Sensor Logger](https://www.tszheichoi.com/sensorlogger) to record sensors which are beyond the capabilities of mobiles. In this example we use a time-of-flight distance sensor.
+It is a demonstration how to use [Sensor Logger](https://www.tszheichoi.com/sensorlogger) to record sensors which are beyond the capabilities of mobiles. In this example we use a time-of-flight distance sensor. SensorPod can run as either a **local MQTT broker** (default) or as an **MQTT client** connecting to a discovered remote broker (switchable via web UI without reflash).
 
 ## Hardware example
 
@@ -18,30 +18,52 @@ SensorPod always runs a WiFi access point and can simultaneously connect to anot
 2. the mobile as well as SensorPod connect to some common WiFi access point
 3. the mobile connects as WiFi client to the SensorPod WiFi access point.
 
-SensorPod runs an MQTT broker which publishes sensor updates:
+### Broker Mode (Default)
+
+SensorPod runs a local MQTT broker (PicoMQTT) which publishes sensor updates:
 
 - MQTT-over-TCP: port 1883, no TLS
 - MQTT-over-Websockets: port 8883, no TLS
 
 The broker is reachable at:
 
-- `sensorpod.local` (resolved via mDNS when SensorPod is a WiFi client — recommended for iOS)
+- `{hostname}.local` (e.g., `esp32c6-5B0A24.local`, resolved via mDNS — recommended for iOS)
 - `192.168.4.1` (when the mobile connects to SensorPod's own AP — recommended for Android)
 
 The broker starts at boot and runs on both the AP and the STA interface simultaneously, so it is reachable regardless of WiFi state.
 
-### mDNS service announcements
+**All sensor topics are prefixed with the device hostname** (e.g., `esp32c6-5B0A24/VL53L0X`, `esp32c6-5B0A24/status`).
 
-SensorPod advertises itself on both interfaces via mDNS as `<HOSTNAME>.local` (default `sensorpod.local`). The following services are announced:
+### Client Mode (Optional)
 
-- `_mqtt._tcp` on port 1883 — instance name `sensorpod-TCP-<MAC>`
-- `_mqtt-ws._tcp` on port 8883 with TXT record `path=/mqtt` — instance name `sensorpod-WS-<MAC>`
-- `_http._tcp` on port 80 — sysinfo + OTA web updater (see [Firmware update](#firmware-update))
-- `_workstation._tcp` (generic host advertisement)
+SensorPod can be switched to Client mode via the web UI (`/`), where it discovers and connects to a remote MQTT broker instead of running its own. The mode is runtime-switchable without reflash:
 
-Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can therefore discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
+- Web UI shows role toggle: "Current Role: [Broker/Client Mode]"
+- Click "Switch to Client Mode" and "Save & Restart"
+- Device reboots in Client mode, discovers brokers via mDNS every 10 seconds
+- Connects to first discovered broker with exponential backoff retry (1s → 2s → 4s → 8s → 16s → 60s cap)
+- Falls back to rediscovery after max retries exhausted
+- All sensor topics still prefixed with hostname, but published to remote broker
 
-On recording start, Sensor Logger connects to this broker and subscribes (typically to topic `#` — all topics). Sensor Logger can then run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.
+**Role is persistent:** switch once, role is saved to NVS and survives power cycles.
+
+### mDNS Service Announcements (Broker Mode)
+
+In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The device hostname is derived from the MAC (e.g., `esp32c6-5B0A24`), and the following services are announced:
+
+- **Host advertisement:** `esp32c6-5B0A24.local` (mDNS A/AAAA record)
+- **MQTT service:** `_mqtt._tcp.local` on port 1883
+  - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
+- **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8883 with TXT record `path=/mqtt`
+  - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
+- **HTTP service:** `_http._tcp.local` on port 80 (sysinfo + OTA web updater)
+- **Workstation:** `_workstation._tcp.local` (generic host advertisement)
+
+Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
+
+**Client Mode:** No mDNS announcements. Instead, the device queries `_mqtt._tcp.local` to discover available brokers and displays them in the web UI dropdown. Discovered brokers show both instance name and IP.
+
+On recording start, Sensor Logger connects to the broker (local or remote) and subscribes (typically to topic `#` — all topics). Sensor Logger can then run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.
 
 ## How to configure Sensor Logger manually
 
@@ -154,7 +176,7 @@ For SensorPod use the __Improv via Serial__ button.
 
 Connect to your devices` port and set SSID and password for your Access Point or Mobile hotspot..
 
-The device's own AP is named `ESP32-<MAC>` with PSK = the hostname (`sensorpod` unless overridden by `-DHOSTNAME=…` at build time). The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
+The device's own AP is named `{hostname}` (e.g., `esp32c6-5B0A24`, derived from MAC unless overridden by `-DHOSTNAME=…` at build time) with PSK = the same hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
 
 ### Erasing credentials
 
@@ -164,10 +186,12 @@ Click counts (single/double/multi) are reserved for application-level button eve
 
 ## Sensors
 
-The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C bus and publishes:
+The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C bus and publishes to the MQTT broker (local or remote):
 
-- `VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
-- `status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
+- `{hostname}/VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
+- `{hostname}/status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
+
+**Topic Prefixing:** All topics are automatically prefixed with the device's hostname for easy identification in multi-pod deployments. Example: `esp32c6-5B0A24/VL53L0X`, `esp32c6-5B0A24/status`.
 
 If no VL53L0X is detected at boot, polling is skipped and only the `status` topic publishes.
 
@@ -186,20 +210,28 @@ Key options in `platformio.ini`:
 
 `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
 
-## Project structure
+## Project Structure
 
 ```
 sensorpod/
 ├── src/
-│   ├── main.cpp        # setup/loop, sensor polling, MQTT publish, button
-│   ├── wifisetup.cpp   # AP + STA + mDNS + HTTP server, sysinfo HTML/JSON
-│   ├── mqtt.cpp        # PicoMQTT broker (TCP + WebSocket)
-│   ├── ota.cpp         # OTA web updater (gated on OTA_WEB_UPDATER)
-│   ├── http_server.hpp # shared WebServer handle + page style
-│   └── credstore.hpp   # NVS wrapper for WiFi credentials
-├── scripts/            # PlatformIO extra_scripts (build info, version, OTA)
-├── platformio.ini      # Boards + envs + lib_deps
-└── *.csv               # Partition tables
+│   ├── main.cpp            # setup/loop, sensor polling, MQTT publish, button, mDNS discovery loop
+│   ├── wifisetup.cpp       # AP + STA + mDNS announcements
+│   ├── webserver.cpp       # HTTP server lifecycle, route registration
+│   ├── content.cpp         # HTML/JSON sysinfo generation
+│   ├── mqtt.cpp            # PicoMQTT broker (Broker mode)
+│   ├── mqtt_client.cpp     # PicoMQTT client wrapper (Client mode)
+│   ├── mdns_client.cpp     # mDNS discovery (async, non-blocking task)
+│   ├── mqtt_device.hpp     # Abstract MQTT interface (Broker/Client polymorphism)
+│   ├── deviceconfig.hpp    # NVS wrapper for role + broker hostname
+│   ├── mdns_state.hpp      # mDNS service struct + externs
+│   ├── led.hpp/cpp         # LED status feedback
+│   ├── ota.cpp             # OTA web updater (gated on OTA_WEB_UPDATER)
+│   ├── http_server.hpp     # shared WebServer handle + page style
+│   └── credstore.hpp       # NVS wrapper for WiFi credentials
+├── scripts/                # PlatformIO extra_scripts (build info, version, OTA)
+├── platformio.ini          # Boards + envs + lib_deps
+└── *.csv                   # Partition tables
 ```
 
 ## Dependencies
