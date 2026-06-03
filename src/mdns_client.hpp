@@ -17,8 +17,13 @@ public:
   void print_brokers(const std::vector<DiscoveredBroker>& brokers);
   std::vector<DiscoveredBroker> get_last_brokers() const { return last_brokers; }
 
+  void start_async_discovery();
+  bool is_discovering() const { return discovery_running; }
+
 private:
   std::vector<DiscoveredBroker> last_brokers;
+  volatile bool discovery_running = false;
+  static void discovery_task(void* arg);
 };
 
 extern MDNSClient mdns_client;

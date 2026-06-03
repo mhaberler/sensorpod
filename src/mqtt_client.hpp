@@ -25,6 +25,7 @@ private:
 
 public:
   bool needs_rediscovery() { return !mqtt.connected() && retry_count >= MAX_RETRIES && pending_host.length() > 0; }
+  bool has_pending() const { return pending_host.length() > 0; }
   void clear_broker() { pending_host = ""; retry_count = 0; retry_backoff_ms = 1000; }
 };
 

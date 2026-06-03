@@ -1,4 +1,6 @@
 #include "mdns_client.hpp"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 MDNSClient mdns_client;
 
@@ -48,4 +50,19 @@ void MDNSClient::print_brokers(const std::vector<DiscoveredBroker>& brokers) {
           brokers[i].instance_name.c_str(), brokers[i].hostname.c_str(),
           brokers[i].ip.c_str(), brokers[i].port);
   }
+}
+
+void MDNSClient::start_async_discovery() {
+  if (discovery_running) return;
+  discovery_running = true;
+  xTaskCreate(discovery_task, "mdns_disc", 4096, this, 1, nullptr);
+}
+
+void MDNSClient::discovery_task(void* arg) {
+  MDNSClient* self = static_cast<MDNSClient*>(arg);
+  log_d("mdns_disc task: starting discovery");
+  self->discover_mqtt_brokers();
+  log_d("mdns_disc task: discovery complete");
+  self->discovery_running = false;
+  vTaskDelete(nullptr);
 }
