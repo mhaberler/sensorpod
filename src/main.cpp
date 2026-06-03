@@ -57,20 +57,32 @@ std::optional<uint16_t> lox_poll(TwoWire &wire);
 
 void onImprovWiFiErrorCb(ImprovTypes::Error err) {
     log_e("Improv error %d", err);
+    WiFi.setAutoReconnect(true);
     blinkLed(2000, 3);
 }
 
 void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
     log_i("Improv provisioned ssid=%s", ssid);
     saveWiFiCredentials(ssid, password);
+    WiFi.setAutoReconnect(true);
     blinkLed(100, 3);
     startStaAttempt(String(ssid), String(password));
+}
+
+// Disable auto-reconnect before Improv's WiFi.begin() to prevent driver interference,
+// then delegate to the library's default connect logic.
+bool onImprovCustomConnect(const char *ssid, const char *password) {
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false);
+    delay(50);
+    return improvSerial.tryConnectToWifi(ssid, password);
 }
 
 void startImprovSerialProvisioning() {
     improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib", IMPROV_WIFI_LIBRARY_VERSION, hostName.c_str(), "http://{LOCAL_IPV4}");
     improvSerial.onImprovError(onImprovWiFiErrorCb);
     improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
+    improvSerial.setCustomConnectWiFi(onImprovCustomConnect);
 }
 
 static String resolve_broker_host(const String& host) {
