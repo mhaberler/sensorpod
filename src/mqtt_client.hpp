@@ -1,7 +1,7 @@
 #pragma once
 
 #include "mqtt_device.hpp"
-#include <String.h>
+#include <PicoMQTT.h>
 
 class MQTTClient : public MQTTDevice {
 public:
@@ -10,8 +10,11 @@ public:
   bool connected() override;
   void publish(const char* topic, const char* payload) override;
 
+  void connect(const char* host, uint16_t port = 1883);
+  String client_id;
+
 private:
-  bool _connected = false;
+  PicoMQTT::Client mqtt;
 };
 
 extern MQTTClient mqtt_client;
