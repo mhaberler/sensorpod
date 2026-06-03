@@ -109,6 +109,13 @@ void setup() {
     } else {
         mqtt_device = (MQTTDevice*)&mqtt_client;
         mqtt_device->begin();
+
+        // If broker is saved in Preferences, connect immediately
+        String saved_broker = DeviceConfig::getSelectedBrokerHostname();
+        if (saved_broker.length() > 0) {
+            log_i("Client mode: connecting to saved broker %s", saved_broker.c_str());
+            mqtt_client.connect(saved_broker.c_str(), 1883);
+        }
         log_d("Client mode initialized");
     }
 

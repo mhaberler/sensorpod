@@ -316,8 +316,9 @@ void sysinfo_json(String &out) {
     auto brokers = mdns_client.get_last_brokers();
     for (size_t i = 0; i < brokers.size(); i++) {
         if (i) out += ',';
+        const char* display_name = (brokers[i].instance_name.length() > 0) ? brokers[i].instance_name.c_str() : brokers[i].hostname.c_str();
         appendf(out, "{\"instance\":\"%s\",\"hostname\":\"%s\",\"ip\":\"%s\",\"port\":%u}",
-                brokers[i].instance_name.c_str(), brokers[i].hostname.c_str(),
+                display_name, brokers[i].hostname.c_str(),
                 brokers[i].ip.c_str(), (unsigned)brokers[i].port);
     }
     out += ']';
