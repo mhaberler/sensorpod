@@ -152,8 +152,8 @@ After the initial USB flash of a pre-built image (see [Pre-built firmware](#pre-
 
 Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on port 80:
 
-- `http://sensorpod.local/` (mDNS — iOS/macOS/Linux)
-- `http://192.168.4.1/` (when connected to SensorPod's own AP)
+- `http://{hostname}.local/` (mDNS — e.g., `http://esp32c6-5B0A24.local/` — recommended for iOS/macOS/Linux)
+- `http://192.168.4.1/` (when connected to SensorPod's own AP — recommended for Android)
 - `http://<STA-IP>/` (look up the IP on your router or in the serial log)
 
 The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table (with `RUN` and `NEXT` slots highlighted), network state, and announced mDNS services. `GET /data` returns the same as JSON.
@@ -205,8 +205,9 @@ Key options in `platformio.ini`:
 -DCORE_DEBUG_LEVEL=5    # 0=none, 5=verbose (release env uses 1)
 -DMQTT_PORT=1883
 -DMQTTWS_PORT=8883
--DHOSTNAME=\"sensorpod\"
 ```
+
+Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`). Override with `-DHOSTNAME=\"custom-name\"` for a specific board.
 
 `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
 
