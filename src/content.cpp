@@ -6,6 +6,7 @@
 
 #include "http_server.hpp"
 #include "mdns_state.hpp"
+#include "mdns_client.hpp"
 #include "mdns.h"
 
 #ifdef BUILD_TAG
@@ -91,8 +92,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     if (!is_broker_mode) {
         out += "<p><strong>Broker Configuration (Client Mode):</strong></p>";
         out += "<p>Discovered brokers appear here after mDNS scan (runs every 10s).</p>";
-        out += "<form id='brokerForm' style='display:none;'>"
-               "<select id='brokerSelect'><option>Loading brokers...</option></select><br>"
+        out += "<form id='brokerForm'>"
+               "<select id='brokerSelect'><option value=''>Select a broker...</option></select><br>"
                "<button type='button' class='config-btn' onclick='selectBroker()'>Connect to Broker</button> "
                "<button type='button' class='config-btn' onclick='refreshBrokers()'>Refresh List</button>"
                "</form>";
@@ -103,10 +104,20 @@ void sysinfo_html(String &out, bool is_broker_mode) {
            "fetch('/api/set-role',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'role='+newRole})"
            ".then(r=>r.json()).then(d=>{alert('Role change in progress, device restarting...')}).catch(e=>alert('Error: '+e))}"
            "function reboot(){fetch('/api/reboot',{method:'POST'}).then(r=>r.json()).then(d=>{alert('Rebooting...')}).catch(e=>alert('Error: '+e))}"
-           "function selectBroker(){var broker=document.getElementById('brokerSelect').value;"
+           "function loadBrokers(){"
+           "fetch('/data').then(r=>r.json()).then(d=>{"
+           "var sel=document.getElementById('brokerSelect');if(!sel)return;"
+           "var brokers=d.discovered_brokers||[];"
+           "if(brokers.length===0){sel.innerHTML='<option>No brokers found (scan every 10s)</option>';return;}"
+           "sel.innerHTML='';"
+           "brokers.forEach(b=>{var opt=document.createElement('option');opt.value=b.ip;opt.textContent=b.instance_name+' ('+b.ip+':'+b.port+')';sel.appendChild(opt);});"
+           "}).catch(e=>console.error('Error loading brokers:',e))"
+           "}"
+           "function selectBroker(){var broker=document.getElementById('brokerSelect').value;if(!broker){alert('Please select a broker');return;}"
            "fetch('/api/set-broker',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hostname='+broker})"
            ".then(r=>r.json()).then(d=>{alert('Broker saved, restarting...')}).catch(e=>alert('Error: '+e))}"
-           "function refreshBrokers(){location.reload()}"
+           "function refreshBrokers(){loadBrokers()}"
+           "window.addEventListener('load',loadBrokers);"
            "</script></div>";
 
     out += "<h3>Identity</h3><ul>";
@@ -296,6 +307,18 @@ void sysinfo_json(String &out) {
         if (m.txt) appendf(out, "\"%s\"", m.txt);
         else       out += "null";
         out += '}';
+    }
+    out += ']';
+
+    if (!first) out += ',';
+    first = false;
+    out += "\"discovered_brokers\":[";
+    auto brokers = mdns_client.get_last_brokers();
+    for (size_t i = 0; i < brokers.size(); i++) {
+        if (i) out += ',';
+        appendf(out, "{\"instance\":\"%s\",\"hostname\":\"%s\",\"ip\":\"%s\",\"port\":%u}",
+                brokers[i].instance_name.c_str(), brokers[i].hostname.c_str(),
+                brokers[i].ip.c_str(), (unsigned)brokers[i].port);
     }
     out += ']';
     out += '}';
