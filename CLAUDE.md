@@ -78,6 +78,59 @@ Multi-file Arduino sketch. Current sources:
 If older notes reference `BLEScanner.cpp`, `i2cio`, or `ringbuffer`, those
 are still aspirational — not present on this branch.
 
+## Dual-Role MQTT (Broker / Client)
+
+Single firmware supports two runtime modes, switchable via web UI without reflash:
+
+- **Broker Mode (default):**
+  - Local MQTT hub (PicoMQTT::Server, TCP 1883 + WS 8883)
+  - AP always on (open, password = `hostName`)
+  - STA optional (if WiFi creds exist)
+  - Announces via mDNS (`_mqtt._tcp.local`, `_mqtt-ws._tcp.local`, `_http._tcp`)
+  - All topics prefixed with `hostName/` (e.g., `sensorpod/VL53L0X`)
+
+- **Client Mode:**
+  - Connects to remote broker discovered via mDNS
+  - AP always on (open, password = `hostName`)
+  - STA required (cannot function without WiFi)
+  - Discovers available brokers every 10s, retries with exponential backoff (1s→2s→4s→8s→16s→60s cap)
+  - Publishes to remote broker, all topics prefixed with `hostName/`
+
+**Role Storage & Switching:**
+
+- Role stored in NVS `Preferences` as boolean (`_broker_mode`)
+- Default: Broker (true)
+- Web UI (`/`) shows current role with toggle checkbox
+- Click "Save & Restart" to switch roles → triggers `ESP.restart()`
+- Role persists across reboot
+
+**Key Files:**
+- `src/deviceconfig.hpp` — NVS wrapper (`getBrokerMode`, `setBrokerMode`, `getSelectedBrokerHostname`, `setSelectedBrokerHostname`)
+- `src/mqtt_device.hpp` — abstract base for polymorphic Broker/Client handling
+- `src/mqtt.hpp/cpp` — `CustomMQTTServer` extends `MQTTDevice`, wraps PicoMQTT::Server
+- `src/mqtt_client.hpp/cpp` — `MQTTClient` extends `MQTTDevice`, wraps PicoMQTT::Client with retry logic
+- `src/mdns_client.hpp/cpp` — `MDNSClient::discover_mqtt_brokers()` queries mDNS for brokers
+- `src/main.cpp` — reads role at boot, initializes appropriate `mqtt_device`, runs mDNS discovery loop
+- `src/wifisetup.cpp` — role-branching WiFi init (Broker: optional STA, Client: required STA)
+- `src/webserver.cpp` — `/api/set-role` and `/api/set-broker` endpoints
+- `src/content.cpp` — web UI role toggle, broker selection section (Client mode only)
+- `src/led.hpp/cpp` — status feedback (GREEN: WiFi+broker OK, ORANGE/SLOW: broker down, RED/FAST: WiFi down)
+
+**Topic Prefixing:**
+All MQTT publishes go through `mqtt_publish(const char *topic, const char *payload)` wrapper
+(in `src/mqtt.cpp`), which auto-prepends `hostName/` to topic. Ensures consistency across modes.
+
+**Failover & Resilience:**
+Client mode retry strategy:
+- Exponential backoff on broker disconnect: 1s → 2s → 4s → 8s → 16s → 60s (capped)
+- Max 5 retry attempts before rediscovery
+- Resets backoff on successful connection
+- Logs all retry attempts for debugging
+
+**Testing:**
+See `validation-checklist.md` for 8 test scenarios. Blockers: A (fresh Broker), B (role switch),
+C (Client discovery), G (topic prefixing), H (reboot).
+
 ## Build-time injection (scripts/)
 
 `extra_scripts` in `[env]` runs these in order — read them before touching the
