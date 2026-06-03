@@ -73,6 +73,10 @@ void startImprovSerialProvisioning() {
     improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
 }
 
+static String resolve_broker_host(const String& host) {
+    if (host.indexOf('.') == -1) return host + ".local";
+    return host;
+}
 
 void setup() {
     Serial.begin(115200);
@@ -113,8 +117,9 @@ void setup() {
         // If broker is saved in Preferences, connect immediately
         String saved_broker = DeviceConfig::getSelectedBrokerHostname();
         if (saved_broker.length() > 0) {
-            log_i("Client mode: connecting to saved broker %s", saved_broker.c_str());
-            mqtt_client.connect(saved_broker.c_str(), 1883);
+            String resolved = resolve_broker_host(saved_broker);
+            log_i("Client mode: connecting to saved broker %s", resolved.c_str());
+            mqtt_client.connect(resolved.c_str(), 1883);
         }
         log_d("Client mode initialized");
     }
@@ -176,10 +181,11 @@ void loop() {
         if (!mdns_client.is_discovering()) {
             auto brokers = mdns_client.get_last_brokers();
             if (!brokers.empty() && !mqtt_client.connected() && !mqtt_client.has_pending()) {
+                String resolved = resolve_broker_host(brokers[0].hostname);
                 log_i("Client mode: connecting to discovered broker %s at %s:%u",
-                      brokers[0].instance_name.c_str(), brokers[0].hostname.c_str(), brokers[0].port);
-                DeviceConfig::setSelectedBrokerHostname(brokers[0].hostname);
-                mqtt_client.connect(brokers[0].hostname.c_str(), brokers[0].port);
+                      brokers[0].instance_name.c_str(), resolved.c_str(), brokers[0].port);
+                DeviceConfig::setSelectedBrokerHostname(resolved);
+                mqtt_client.connect(resolved.c_str(), brokers[0].port);
             }
         }
     }
