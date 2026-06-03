@@ -38,6 +38,7 @@ bool lox_present;
 
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
+#include "mdns_client.hpp"
 ImprovWiFi improvSerial(&Serial);
 
 extern String hostName;
@@ -152,6 +153,15 @@ void loop() {
 
     if (mqtt_device) {
         mqtt_device->loop();
+    }
+
+    // Client mode: periodic mDNS discovery
+    if (!is_broker_mode) {
+        static unsigned long last_discovery = 0;
+        if (now - last_discovery > 10000) {  // Every 10s
+            last_discovery = now;
+            mdns_client.discover_mqtt_brokers();
+        }
     }
 
     // LED feedback: WiFi/broker connection status
