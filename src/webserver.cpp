@@ -34,6 +34,19 @@ void webserver_setup() {
         ESP.restart();
     });
 
+    // Broker selection endpoint (Client mode)
+    http_server.on("/api/set-broker", HTTP_POST, []() {
+        if (!http_server.hasArg("hostname")) {
+            http_server.send(400, "application/json", "{\"error\":\"missing hostname parameter\"}");
+            return;
+        }
+        String hostname = http_server.arg("hostname");
+        DeviceConfig::setSelectedBrokerHostname(hostname);
+        http_server.send(200, "application/json", "{\"status\":\"saved\",\"restarting\":true}");
+        delay(500);
+        ESP.restart();
+    });
+
     // Reboot endpoint
     http_server.on("/api/reboot", HTTP_POST, []() {
         http_server.send(200, "application/json", "{\"status\":\"restarting\"}");

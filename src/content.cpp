@@ -86,11 +86,27 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             "", is_broker_mode ? "Client" : "Broker");
     out += "<button type='button' class='config-btn' onclick='switchRole()'>Save &amp; Restart</button> "
            "<button type='button' class='config-btn danger' onclick='reboot()'>Reboot</button></form>";
+
+    // Client mode: show broker selection section
+    if (!is_broker_mode) {
+        out += "<p><strong>Broker Configuration (Client Mode):</strong></p>";
+        out += "<p>Discovered brokers appear here after mDNS scan (runs every 10s).</p>";
+        out += "<form id='brokerForm' style='display:none;'>"
+               "<select id='brokerSelect'><option>Loading brokers...</option></select><br>"
+               "<button type='button' class='config-btn' onclick='selectBroker()'>Connect to Broker</button> "
+               "<button type='button' class='config-btn' onclick='refreshBrokers()'>Refresh List</button>"
+               "</form>";
+    }
+
     out += "<script>"
            "function switchRole(){var newRole=document.getElementById('roleToggle').checked?'client':'broker';"
            "fetch('/api/set-role',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'role='+newRole})"
            ".then(r=>r.json()).then(d=>{alert('Role change in progress, device restarting...')}).catch(e=>alert('Error: '+e))}"
            "function reboot(){fetch('/api/reboot',{method:'POST'}).then(r=>r.json()).then(d=>{alert('Rebooting...')}).catch(e=>alert('Error: '+e))}"
+           "function selectBroker(){var broker=document.getElementById('brokerSelect').value;"
+           "fetch('/api/set-broker',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'hostname='+broker})"
+           ".then(r=>r.json()).then(d=>{alert('Broker saved, restarting...')}).catch(e=>alert('Error: '+e))}"
+           "function refreshBrokers(){location.reload()}"
            "</script></div>";
 
     out += "<h3>Identity</h3><ul>";
