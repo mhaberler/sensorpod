@@ -124,8 +124,6 @@ void wifi_setup() {
     // mDNS: Broker mode announces, Client mode will discover
     if (MDNS.begin(hostName)) {
         log_i("starting MDNS for %s", hostName.c_str());
-        MDNS.enableWorkstation();
-
         if (is_broker_mode) {
             // Broker mode: announce self
             MDNS.addService("mqtt", "tcp", MQTT_PORT);
