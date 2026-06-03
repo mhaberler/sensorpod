@@ -57,7 +57,20 @@ jobs:
         run: rm -rf firmware && mkdir -p firmware
 
       - name: Build merged firmware
-        run: pio run -e ${{ matrix.platformio_env }} -t firmware
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "Build attempt $attempt..."
+            if pio run -e ${{ matrix.platformio_env }} -t firmware; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Build failed, cleaning PlatformIO package cache before retry..."
+              rm -rf ~/.platformio/.cache
+              sleep 15
+            fi
+          done
+          exit 1
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
