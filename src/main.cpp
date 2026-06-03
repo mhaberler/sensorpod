@@ -153,6 +153,22 @@ void loop() {
     if (mqtt_device) {
         mqtt_device->loop();
     }
+
+    // LED feedback: WiFi/broker connection status
+    bool wifi_connected = (WiFi.status() == WL_CONNECTED);
+    bool mqtt_connected = mqtt_device && mqtt_device->connected();
+
+    LEDState led_state;
+    if (!wifi_connected) {
+        led_state = LED_FAST_BLINK;  // Red/fast: WiFi down
+    } else if (!mqtt_connected) {
+        led_state = LED_SLOW_BLINK;  // Orange/slow: Broker down
+    } else {
+        led_state = LED_SOLID;       // Green: All OK
+    }
+    updateLed(led_state);
+    ledLoop();
+
     wifi_loop();
     yield();
 }
