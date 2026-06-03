@@ -195,6 +195,26 @@ The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C b
 
 If no VL53L0X is detected at boot, polling is skipped and only the `status` topic publishes.
 
+## LED Status Feedback
+
+The onboard LED (or RGB NeoPixel if present) provides real-time connection status:
+
+| LED Pattern | Color | Meaning |
+| --- | --- | --- |
+| **Solid** | Green | WiFi connected + MQTT broker (local or remote) is online and reachable |
+| **Slow blink** (500ms) | Orange | WiFi connected, but MQTT broker is down or unreachable |
+| **Fast blink** (200ms) | Red | WiFi disconnected; device is in AP-only mode or STA connection lost |
+| **Off** | — | LED disabled or device in idle state |
+
+**Boot sequence:** After `setup()` completes, the LED flashes 5 times (100ms each) to indicate boot success.
+
+**Improv provisioning:** When Improv WiFi provisioning is active (serial or BLE):
+
+- Error: 3 rapid blinks (2000ms each)
+- Success: 3 quick blinks (100ms each)
+
+The continuous status LED is updated every loop iteration based on WiFi and MQTT state, so the pattern reflects the current connection status in real-time.
+
 ## Configuration
 
 ### Build flags
