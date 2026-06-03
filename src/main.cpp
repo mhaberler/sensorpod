@@ -171,9 +171,9 @@ void loop() {
             auto brokers = mdns_client.discover_mqtt_brokers();
             if (!brokers.empty()) {
                 log_i("Client mode: discovered broker %s at %s:%u, connecting",
-                      brokers[0].instance_name.c_str(), brokers[0].ip.c_str(), brokers[0].port);
-                DeviceConfig::setSelectedBrokerHostname(brokers[0].ip);
-                mqtt_client.connect(brokers[0].ip.c_str(), brokers[0].port);
+                      brokers[0].instance_name.c_str(), brokers[0].hostname.c_str(), brokers[0].port);
+                DeviceConfig::setSelectedBrokerHostname(brokers[0].hostname);
+                mqtt_client.connect(brokers[0].hostname.c_str(), brokers[0].port);
             }
         }
     }

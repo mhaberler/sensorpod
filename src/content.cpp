@@ -110,7 +110,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
            "var brokers=d.discovered_brokers||[];"
            "if(brokers.length===0){sel.innerHTML='<option>No brokers found (scan every 10s)</option>';return;}"
            "sel.innerHTML='';"
-           "brokers.forEach(b=>{var opt=document.createElement('option');opt.value=b.ip;opt.textContent=b.instance_name+' ('+b.ip+':'+b.port+')';sel.appendChild(opt);});"
+           "brokers.forEach(b=>{var opt=document.createElement('option');opt.value=b.hostname;opt.textContent=b.instance+' ('+b.ip+':'+b.port+')';sel.appendChild(opt);});"
            "}).catch(e=>console.error('Error loading brokers:',e))"
            "}"
            "function selectBroker(){var broker=document.getElementById('brokerSelect').value;if(!broker){alert('Please select a broker');return;}"
