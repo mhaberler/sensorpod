@@ -11,6 +11,8 @@ void webserver_setup() {
         String body;
         body.reserve(4096);
         sysinfo_html(body, is_broker_mode);
+        // Force the browser to immediately shut down this specific socket
+        http_server.sendHeader("Connection", "close");
         http_server.send(200, "text/html", body);
     });
     http_server.on("/data", HTTP_GET, []() {
@@ -52,6 +54,10 @@ void webserver_setup() {
         http_server.send(200, "application/json", "{\"status\":\"restarting\"}");
         delay(500);
         ESP.restart();
+    });
+
+    http_server.on("/favicon.ico", []() {
+        http_server.send(204); // 204 No Content telling Chrome to stop waiting immediately
     });
 
 #ifdef OTA_WEB_UPDATER
