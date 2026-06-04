@@ -8,6 +8,8 @@
 #include "mdns_state.hpp"
 #include "mdns_client.hpp"
 #include "mdns.h"
+#include "mqtt.hpp"
+#include "mqtt_client.hpp"
 
 #ifdef BUILD_TAG
     #define FW_VERSION  BUILD_TAG
@@ -120,6 +122,22 @@ void sysinfo_html(String &out, bool is_broker_mode) {
            "window.addEventListener('load',loadBrokers);"
            "</script></div>";
 
+    out += "<h3>MQTT</h3><ul>";
+    if (is_broker_mode) {
+        out += "<li>Status: running</li>";
+        appendf(out, "<li>Clients connected: %d</li>", mqtt_broker.client_count);
+        appendf(out, "<li>Subscriptions: %d</li>",     mqtt_broker.subscribed);
+        appendf(out, "<li>Messages routed: %d</li>",   mqtt_broker.messages);
+    } else {
+        appendf(out, "<li>Status: %s</li>", mqtt_client.connected() ? "connected" : "disconnected");
+        if (mqtt_client.connected_since_ms > 0)
+            appendf(out, "<li>Connected for: %lus</li>", (unsigned long)(millis() - mqtt_client.connected_since_ms) / 1000);
+        appendf(out, "<li>Reconnects: %u</li>",      mqtt_client.total_reconnects);
+        appendf(out, "<li>Messages sent: %u</li>",   mqtt_client.messages_sent);
+        appendf(out, "<li>Messages failed: %u</li>", mqtt_client.messages_failed);
+    }
+    out += "</ul>";
+
     out += "<h3>Identity</h3><ul>";
     appendf(out, "<li>FW: %s</li>", FW_VERSION);
     appendf(out, "<li>Build SHA: %s</li>", BUILD_SHA);
@@ -213,7 +231,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     out += "</body></html>";
 }
 
-void sysinfo_json(String &out) {
+void sysinfo_json(String &out, bool is_broker_mode) {
     const esp_partition_t *running = esp_ota_get_running_partition();
     const esp_partition_t *next    = esp_ota_get_next_update_partition(NULL);
     bool first = true;
@@ -251,6 +269,7 @@ void sysinfo_json(String &out) {
 #endif
     json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
     json_kv_u(out,   "uptime_s", millis() / 1000, first);
+    json_kv_u(out,   "broker_mode", is_broker_mode ? 1 : 0, first);
 
     json_kv_str(out, "chip_model", ESP.getChipModel(), first);
     json_kv_u(out,   "chip_cores", ESP.getChipCores(), first);
@@ -322,5 +341,21 @@ void sysinfo_json(String &out) {
                 brokers[i].ip.c_str(), (unsigned)brokers[i].port);
     }
     out += ']';
+
+    if (!first) out += ',';
+    first = false;
+    out += "\"mqtt\":{";
+    if (is_broker_mode) {
+        appendf(out, "\"clients\":%d,\"subscriptions\":%d,\"messages_routed\":%d",
+                mqtt_broker.client_count, mqtt_broker.subscribed, mqtt_broker.messages);
+    } else {
+        appendf(out, "\"connected\":%s", mqtt_client.connected() ? "true" : "false");
+        if (mqtt_client.connected_since_ms > 0)
+            appendf(out, ",\"connected_for_s\":%lu",
+                    (unsigned long)(millis() - mqtt_client.connected_since_ms) / 1000);
+        appendf(out, ",\"reconnects\":%u,\"messages_sent\":%u,\"messages_failed\":%u",
+                mqtt_client.total_reconnects, mqtt_client.messages_sent, mqtt_client.messages_failed);
+    }
+    out += '}';
     out += '}';
 }

@@ -8,6 +8,19 @@ void MQTTClient::begin() {
   retry_count = 0;
   retry_backoff_ms = 1000;
   pending_host = "";
+  connected_since_ms = 0;
+
+  mqtt.connected_callback = [this]() {
+    if (connected_since_ms != 0) total_reconnects++;
+    connected_since_ms = millis();
+    retry_count = 0;
+    retry_backoff_ms = 1000;
+    log_i("MQTT connected (reconnects=%u)", total_reconnects);
+  };
+  mqtt.disconnected_callback = [this]() {
+    connected_since_ms = 0;
+    log_w("MQTT disconnected");
+  };
 }
 
 void MQTTClient::loop() {
@@ -29,12 +42,6 @@ void MQTTClient::loop() {
   }
 
   mqtt.loop();
-
-  if (mqtt.connected() && retry_count > 0) {
-    log_i("MQTT connected after %u retries", retry_count);
-    retry_count = 0;
-    retry_backoff_ms = 1000;
-  }
 }
 
 bool MQTTClient::connected() {
@@ -44,8 +51,10 @@ bool MQTTClient::connected() {
 void MQTTClient::publish(const char* topic, const char* payload) {
   if (mqtt.connected()) {
     mqtt.publish(topic, payload);
+    messages_sent++;
     log_d("MQTTClient::publish(%s)", topic);
   } else {
+    messages_failed++;
     log_w("MQTTClient::publish(%s) — broker disconnected, will retry", topic);
   }
 }

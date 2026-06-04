@@ -16,7 +16,7 @@ static constexpr const char *HTTP_PAGE_STYLE =
   "</style>";
 
 void sysinfo_html(String &out, bool is_broker_mode);
-void sysinfo_json(String &out);
+void sysinfo_json(String &out, bool is_broker_mode);
 void webserver_setup();
 void webserver_loop();
 

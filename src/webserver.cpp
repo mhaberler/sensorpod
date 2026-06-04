@@ -18,7 +18,7 @@ void webserver_setup() {
     http_server.on("/data", HTTP_GET, []() {
         String body;
         body.reserve(2048);
-        sysinfo_json(body);
+        sysinfo_json(body, is_broker_mode);
         http_server.send(200, "application/json", body);
     });
 
