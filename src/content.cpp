@@ -3,6 +3,8 @@
 #include <Esp.h>
 #include <esp_partition.h>
 #include <esp_ota_ops.h>
+#include <esp_arduino_version.h>
+#include <esp_app_desc.h>
 
 #include "http_server.hpp"
 #include "mdns_state.hpp"
@@ -169,6 +171,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 #ifdef BUILD_FRAMEWORK
     appendf(out, "<li>Build framework: %s</li>", BUILD_FRAMEWORK);
 #endif
+    appendf(out, "<li>Arduino: %s</li>", ESP_ARDUINO_VERSION_STR);
+    appendf(out, "<li>IDF: %s</li>", esp_app_get_description()->idf_ver);
     appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
     appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
 
@@ -268,6 +272,8 @@ void sysinfo_json(String &out, bool is_broker_mode) {
     json_kv_str(out, "build_framework", BUILD_FRAMEWORK, first);
 #endif
     json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
+    json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
+    json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
     json_kv_u(out,   "uptime_s", millis() / 1000, first);
     json_kv_u(out,   "broker_mode", is_broker_mode ? 1 : 0, first);
 
