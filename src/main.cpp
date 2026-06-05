@@ -16,11 +16,6 @@
 #include "listenv.hpp"
 #include "mqtt_device.hpp"
 
-#ifdef BUILD_TAG
-    #define FW_VERSION  BUILD_TAG
-#else
-    #define FW_VERSION  "0.0.1"
-#endif
 // start BLE provisioning service only afeter wifi connect failed
 // p4 takes longer time to get set up
 #ifdef CONFIG_IDF_TARGET_ESP32P4

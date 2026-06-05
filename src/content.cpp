@@ -16,7 +16,7 @@
 #ifdef BUILD_TAG
     #define FW_VERSION  BUILD_TAG
 #else
-    #define FW_VERSION  "0.0.1"
+    #define FW_VERSION  "n/a"
 #endif
 
 #ifndef BUILD_SHA
