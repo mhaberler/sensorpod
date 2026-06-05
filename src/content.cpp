@@ -124,6 +124,26 @@ void sysinfo_html(String &out, bool is_broker_mode) {
            "window.addEventListener('load',loadBrokers);"
            "</script></div>";
 
+    out += "<h3>Network</h3><ul>";
+    appendf(out, "<li>STA SSID: %s</li>", WiFi.SSID().c_str());
+    appendf(out, "<li>STA IP: %s</li>", WiFi.localIP().toString().c_str());
+    appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
+    appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
+    appendf(out, "<li>AP clients: %u</li>", (unsigned)WiFi.softAPgetStationNum());
+    appendf(out, "<li>mDNS: %s.local", hostName.c_str());
+    if (mdns_count) {
+        out += "<ul>";
+        for (size_t i = 0; i < mdns_count; i++) {
+            const MdnsAnnounce &m = mdns_services[i];
+            appendf(out, "<li>%s.%s.%s.local:%u", m.instance, m.service, m.proto,
+                    (unsigned)m.port);
+            if (m.txt) appendf(out, " (%s)", m.txt);
+            out += "</li>";
+        }
+        out += "</ul>";
+    }
+    out += "</li></ul>";
+
     out += "<h3>MQTT</h3><ul>";
     if (is_broker_mode) {
         out += "<li>Status: running</li>";
@@ -176,6 +196,18 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
     appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
 
+    out += "<h3>SafeGithubOTA</h3><ul>";
+#ifdef SGO_DEFAULT_OWNER
+    appendf(out, "<li>Owner: %s</li>", SGO_DEFAULT_OWNER);
+#endif
+#ifdef SGO_DEFAULT_REPO
+    appendf(out, "<li>Repo: %s</li>", SGO_DEFAULT_REPO);
+#endif
+#ifdef SGO_DEFAULT_BIN
+    appendf(out, "<li>OTA bin: %s</li>", SGO_DEFAULT_BIN);
+#endif
+    out += "</ul>";
+
     out += "<h3>Chip</h3><ul>";
     appendf(out, "<li>Model: %s</li>", ESP.getChipModel());
     appendf(out, "<li>Cores: %u</li>", ESP.getChipCores());
@@ -212,25 +244,6 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     esp_partition_iterator_release(it);
     out += "</table>";
 
-    out += "<h3>Network</h3><ul>";
-    appendf(out, "<li>STA SSID: %s</li>", WiFi.SSID().c_str());
-    appendf(out, "<li>STA IP: %s</li>", WiFi.localIP().toString().c_str());
-    appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
-    appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
-    appendf(out, "<li>AP clients: %u</li>", (unsigned)WiFi.softAPgetStationNum());
-    appendf(out, "<li>mDNS: %s.local", hostName.c_str());
-    if (mdns_count) {
-        out += "<ul>";
-        for (size_t i = 0; i < mdns_count; i++) {
-            const MdnsAnnounce &m = mdns_services[i];
-            appendf(out, "<li>%s.%s.%s.local:%u", m.instance, m.service, m.proto,
-                    (unsigned)m.port);
-            if (m.txt) appendf(out, " (%s)", m.txt);
-            out += "</li>";
-        }
-        out += "</ul>";
-    }
-    out += "</li></ul>";
 
     out += "</body></html>";
 }
@@ -274,6 +287,15 @@ void sysinfo_json(String &out, bool is_broker_mode) {
     json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
     json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
     json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
+#ifdef SGO_DEFAULT_OWNER
+    json_kv_str(out, "sgo_owner", SGO_DEFAULT_OWNER, first);
+#endif
+#ifdef SGO_DEFAULT_REPO
+    json_kv_str(out, "sgo_repo", SGO_DEFAULT_REPO, first);
+#endif
+#ifdef SGO_DEFAULT_BIN
+    json_kv_str(out, "sgo_bin", SGO_DEFAULT_BIN, first);
+#endif
     json_kv_u(out,   "uptime_s", millis() / 1000, first);
     json_kv_u(out,   "broker_mode", is_broker_mode ? 1 : 0, first);
 
