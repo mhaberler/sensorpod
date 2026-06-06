@@ -131,8 +131,8 @@ void wifi_setup() {
             MDNS.addService("mqtt-ws", "tcp", MQTTWS_PORT);
             MDNS.addServiceTxt("mqtt-ws", "tcp", "path", "/mqtt");
 
-            mqttInstance   = "TCP-" + hostName;
-            mqttWsInstance = "WS-" + hostName;
+            mqttInstance   = APP_NAME " MQTT broker - TCP at " + hostName;
+            mqttWsInstance = APP_NAME " MQTT broker - WS at " + hostName;
             httpInstance   = hostName;
             mdns_service_instance_name_set("_mqtt", "_tcp", mqttInstance.c_str());
             mdns_service_instance_name_set("_mqtt-ws", "_tcp", mqttWsInstance.c_str());
