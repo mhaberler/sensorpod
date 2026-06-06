@@ -7,8 +7,8 @@ class DeviceConfig {
 public:
   static bool isBrokerMode() {
     Preferences prefs;
-    prefs.begin("device-config", true);  // read-only
-    bool role = prefs.getBool("role", true);  // default: broker
+    prefs.begin("device-config", false);  // read-only
+    bool role = prefs.getBool("role", false);  // default: broker
     prefs.end();
     return role;
   }
@@ -23,7 +23,7 @@ public:
 
   static String getSelectedBrokerHostname() {
     Preferences prefs;
-    prefs.begin("device-config", true);
+    prefs.begin("device-config", false);
     String hostname = prefs.getString("broker_host", "");
     prefs.end();
     return hostname;

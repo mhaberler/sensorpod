@@ -30,7 +30,7 @@ public:
 
 	static bool loadWiFiCredentials(String &ssid, String &password) {
 		Preferences preferences;
-		if (!preferences.begin(prefNamespace(), true)) {
+		if (!preferences.begin(prefNamespace(), false)) {
 			log_d("[Preferences] Failed to open namespace");
 			return false;
 		}
