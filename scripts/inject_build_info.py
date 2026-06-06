@@ -3,6 +3,8 @@
 #
 #   BUILD_SHA            always, when in a git repo — `git rev-parse --short HEAD`
 #   BUILD_DATE           always — UTC ISO-8601 build timestamp
+#   BUILD_HOST           always — build origin: "user@host" locally,
+#                        "actor@runner (GitHub Actions)" in CI
 #   BUILD_REPO           CI only — "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
 #   BUILD_TAG            CI tag builds — $GITHUB_REF_NAME (matches v?N.N.N…)
 #   BUILD_FIRMWARE_URI   CI tag builds — release asset URL for the merged bin
@@ -24,8 +26,10 @@
 
 from __future__ import annotations
 
+import getpass
 import os
 import re
+import socket
 import subprocess
 from datetime import datetime, timezone
 from typing import Any
@@ -83,6 +87,21 @@ def inject_sgo_defaults():
     define_str_if_unset("SGO_DEFAULT_BIN", ota_bin_filename(env))
 
 
+def build_host():
+    # CI: prefer GitHub-provided identity over the ephemeral runner's
+    # local hostname/user (which are generic, e.g. "runner@fv-az...").
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        actor = os.environ.get("GITHUB_ACTOR", "")
+        runner = os.environ.get("RUNNER_NAME") or socket.gethostname()
+        who = f"{actor}@{runner}" if actor else runner
+        return f"{who} (GitHub Actions)"
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+    return f"{user}@{socket.gethostname()}"
+
+
 def inject():
     # Git SHA — skip silently if not in a git repo
     try:
@@ -101,6 +120,9 @@ def inject():
 
     # Build date — always available
     define_str("BUILD_DATE", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+    # Build host — local "user@host" or CI "actor@runner (GitHub Actions)"
+    define_str("BUILD_HOST", build_host())
 
     # CI-only: repo, tag, firmware URI
     github_repository = os.environ.get("GITHUB_REPOSITORY", "")
