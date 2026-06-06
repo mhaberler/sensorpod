@@ -6,6 +6,7 @@
 #include <esp_partition.h>
 #include <stdarg.h>
 
+#include "credstore.hpp"
 #include "http_server.hpp"
 #include "mdns.h"
 #include "mdns_client.hpp"
@@ -37,6 +38,31 @@ static void appendf(String &out, const char *fmt, ...) {
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
   out += buf;
+}
+
+static void append_html_attr(String &out, const String &s) {
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    switch (c) {
+    case '&':
+      out += "&amp;";
+      break;
+    case '<':
+      out += "&lt;";
+      break;
+    case '>':
+      out += "&gt;";
+      break;
+    case '"':
+      out += "&quot;";
+      break;
+    case '\'':
+      out += "&#39;";
+      break;
+    default:
+      out += c;
+    }
+  }
 }
 
 static const char *part_type_name(esp_partition_type_t t) {
@@ -124,6 +150,24 @@ void sysinfo_html(String &out, bool is_broker_mode) {
            "</form>";
   }
 
+  // WiFi credentials form (prefilled from saved NVS creds)
+  String savedSsid, savedPass;
+  loadWiFiCredentials(savedSsid, savedPass); // empty if none saved
+  out += "<h3>WiFi Credentials</h3><form id='wifiForm'>";
+  out += "<label>SSID:<br><input type='text' id='wifiSsid' value=\"";
+  append_html_attr(out, savedSsid);
+  out += "\"></label><br><label>Password:<br><input type='password' "
+         "id='wifiPass' value=\"";
+  append_html_attr(out, savedPass);
+  out += "\"></label><br>";
+  out += "<label><input type='checkbox' id='wifiShow' "
+         "onclick=\"document.getElementById('wifiPass').type="
+         "this.checked?'text':'password'\"> Show password</label><br>";
+  out += "<button type='button' class='config-btn' onclick='saveWifi()'>Save "
+         "&amp; Restart</button>";
+  out += "<p><small>Leave SSID empty and save to clear stored "
+         "credentials.</small></p></form>";
+
   out +=
       "<script>"
       "function switchRole(){var "
@@ -158,6 +202,17 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       ".then(r=>r.json()).then(d=>{alert('Broker saved, "
       "restarting...')}).catch(e=>alert('Error: '+e))}"
       "function refreshBrokers(){loadBrokers()}"
+      "function saveWifi(){"
+      "var s=document.getElementById('wifiSsid').value;"
+      "var p=document.getElementById('wifiPass').value;"
+      "if(s.length===0&&!confirm('Empty SSID will CLEAR saved WiFi credentials "
+      "and reboot. Continue?'))return;"
+      "fetch('/api/"
+      "set-wifi',{method:'POST',headers:{'Content-Type':'application/"
+      "x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+"
+      "encodeURIComponent(p)})"
+      ".then(r=>r.json()).then(d=>{alert('WiFi saved, device "
+      "restarting...')}).catch(e=>alert('Error: '+e))}"
       "window.addEventListener('load',loadBrokers);"
       "</script></div>";
 
