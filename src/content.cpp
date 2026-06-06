@@ -171,7 +171,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   out +=
       "<script>"
       "function switchRole(){var "
-      "newRole=document.getElementById('roleToggle').checked?'client':'broker';"
+      "newRole=document.getElementById('roleToggle').checked?'broker':'client';"
       "fetch('/api/"
       "set-role',{method:'POST',headers:{'Content-Type':'application/"
       "x-www-form-urlencoded'},body:'role='+newRole})"
