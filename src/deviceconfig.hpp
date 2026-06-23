@@ -7,15 +7,15 @@ class DeviceConfig {
 public:
   static bool isBrokerMode() {
     Preferences prefs;
-    prefs.begin("device-config", false);  // read-only
-    bool role = prefs.getBool("role", false);  // default: broker
+    prefs.begin("device-config", false);     // read-only
+    bool role = prefs.getBool("role", true); // default: broker
     prefs.end();
     return role;
   }
 
   static void setBrokerMode(bool enabled) {
     Preferences prefs;
-    prefs.begin("device-config", false);  // read-write
+    prefs.begin("device-config", false); // read-write
     prefs.putBool("role", enabled);
     prefs.end();
     log_d("Device config: role = %s", enabled ? "broker" : "client");
@@ -29,7 +29,7 @@ public:
     return hostname;
   }
 
-  static void setSelectedBrokerHostname(const String& hostname) {
+  static void setSelectedBrokerHostname(const String &hostname) {
     Preferences prefs;
     prefs.begin("device-config", false);
     prefs.putString("broker_host", hostname);

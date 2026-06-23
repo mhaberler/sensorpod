@@ -127,12 +127,10 @@ void sysinfo_html(String &out, bool is_broker_mode) {
           "<form id='roleForm'><input type='hidden' name='role' value='%s'>",
           is_broker_mode ? "client" : "broker");
   appendf(out,
-          "<label><input type='checkbox' id='roleToggle' %s> Switch to %s "
-          "Mode</label><br>",
-          "", is_broker_mode ? "Client" : "Broker");
-  out += "<button type='button' class='config-btn' onclick='switchRole()'>Save "
-         "&amp; Restart</button> "
-         "<button type='button' class='config-btn danger' "
+          "<button type='button' class='config-btn' onclick='switchRole()'>"
+          "Switch to %s Mode and Reboot</button> ",
+          is_broker_mode ? "Client" : "Broker");
+  out += "<button type='button' class='config-btn danger' "
          "onclick='reboot()'>Reboot</button></form>";
 
   // Client mode: show broker selection section
@@ -171,7 +169,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   out +=
       "<script>"
       "function switchRole(){var "
-      "newRole=document.getElementById('roleToggle').checked?'broker':'client';"
+      "newRole=document.querySelector('#roleForm input[name=role]').value;"
       "fetch('/api/"
       "set-role',{method:'POST',headers:{'Content-Type':'application/"
       "x-www-form-urlencoded'},body:'role='+newRole})"
