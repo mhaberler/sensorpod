@@ -63,7 +63,7 @@ Multi-file Arduino sketch. Current sources:
   Uses `hostName` (runtime string) and all injected `BUILD_*` macros.
 - `src/mdns_state.hpp` — shared `MdnsAnnounce` struct and `mdns_services[]`/`mdns_count`
   externs, used by both wifisetup and content.
-- `src/mqtt.cpp` — PicoMQTT broker (TCP 1883 + WebSocket 8883), also runs
+- `src/mqtt.cpp` — PicoMQTT broker (TCP 1883 + WebSocket 8080), also runs
   on both AP and STA.
 - `src/ota.cpp` — web OTA updater. Compiled only when `OTA_WEB_UPDATER` is
   defined (composed in via the `[ota]` build-flag block in `platformio.ini`,
@@ -83,7 +83,7 @@ are still aspirational — not present on this branch.
 Single firmware supports two runtime modes, switchable via web UI without reflash:
 
 - **Broker Mode (default):**
-  - Local MQTT hub (PicoMQTT::Server, TCP 1883 + WS 8883)
+  - Local MQTT hub (PicoMQTT::Server, TCP 1883 + WS 8080)
   - AP always on (open, password = `hostName`)
   - STA optional (if WiFi creds exist)
   - Announces via mDNS (`_mqtt._tcp.local`, `_mqtt-ws._tcp.local`, `_http._tcp`)

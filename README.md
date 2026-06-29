@@ -23,7 +23,7 @@ SensorPod always runs a WiFi access point and can simultaneously connect to anot
 SensorPod runs a local MQTT broker (PicoMQTT) which publishes sensor updates:
 
 - MQTT-over-TCP: port 1883, no TLS
-- MQTT-over-Websockets: port 8883, no TLS
+- MQTT-over-Websockets: port 8080, no TLS
 
 The broker is reachable at:
 
@@ -54,7 +54,7 @@ In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The dev
 - **Host advertisement:** `esp32c6-5B0A24.local` (mDNS A/AAAA record)
 - **MQTT service:** `_mqtt._tcp.local` on port 1883
   - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
-- **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8883 with TXT record `path=/mqtt`
+- **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8080 with TXT record `path=/mqtt`
   - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
 - **HTTP service:** `_http._tcp.local` on port 80 (sysinfo + OTA web updater)
 - **Workstation:** `_workstation._tcp.local` (generic host advertisement)
@@ -226,7 +226,7 @@ Key options in `platformio.ini`:
 ```ini
 -DCORE_DEBUG_LEVEL=5    # 0=none, 5=verbose (release env uses 1)
 -DMQTT_PORT=1883
--DMQTTWS_PORT=8883
+-DMQTTWS_PORT=8080
 ```
 
 Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`). Override with `-DHOSTNAME=\"custom-name\"` for a specific board.
