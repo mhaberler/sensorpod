@@ -12,6 +12,7 @@
 #include "mdns_state.hpp"
 
 extern bool is_broker_mode;
+extern bool mdns_reannounce_enabled;
 
 String hostName;
 
@@ -41,7 +42,7 @@ static bool mdns_announce_netif(const char *ifkey) {
 }
 
 static void mdns_reannounce_if_due(unsigned long now, bool force_timer) {
-  if (!is_broker_mode)
+  if (!is_broker_mode || !mdns_reannounce_enabled)
     return;
   unsigned long elapsed = now - last_mdns_announce;
   if (!force_timer && elapsed < MDNS_REANNOUNCE_MIN_GAP_MS)
