@@ -1,15 +1,27 @@
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
-#include <WebServer.h>
+#include<WebServer.h>
 
 extern bool is_broker_mode;
 extern bool mdns_reannounce_enabled;
 
 WebServer http_server(80);
 
+// Helper to log incoming requests
+static void log_request() {
+  String client_ip = http_server.client().remoteIP().toString().c_str();
+  log_i("HTTP request from %s: %s %s", client_ip.c_str(),
+        http_server.method() == HTTP_GET ? "GET" :
+        http_server.method() == HTTP_POST ? "POST" :
+        http_server.method() == HTTP_PUT ? "PUT" :
+        http_server.method() == HTTP_DELETE ? "DELETE" : "OTHER",
+        http_server.uri().c_str());
+}
+
 void webserver_setup() {
-  http_server.on("/", HTTP_GET, []() {
+  http_server.on("/", HTTP_GET,[]() {
+    log_request();
     String body;
     body.reserve(4096);
     sysinfo_html(body, is_broker_mode);
@@ -17,7 +29,8 @@ void webserver_setup() {
     http_server.sendHeader("Cache-Control", "no-store");
     http_server.send(200, "text/html", body);
   });
-  http_server.on("/data", HTTP_GET, []() {
+  http_server.on("/data", HTTP_GET,[]() {
+    log_request();
     String body;
     body.reserve(2048);
     sysinfo_json(body, is_broker_mode);
@@ -26,7 +39,8 @@ void webserver_setup() {
   });
 
   // Role switching endpoint
-  http_server.on("/api/set-role", HTTP_POST, []() {
+  http_server.on("/api/set-role", HTTP_POST,[]() {
+    log_request();
     if (!http_server.hasArg("role")) {
       http_server.send(400, "application/json",
                        "{\"error\":\"missing role parameter\"}");
@@ -42,7 +56,8 @@ void webserver_setup() {
   });
 
   // Broker selection endpoint (Client mode)
-  http_server.on("/api/set-broker", HTTP_POST, []() {
+  http_server.on("/api/set-broker", HTTP_POST,[]() {
+    log_request();
     if (!http_server.hasArg("hostname")) {
       http_server.send(400, "application/json",
                        "{\"error\":\"missing hostname parameter\"}");
@@ -57,7 +72,8 @@ void webserver_setup() {
   });
 
   // mDNS re-announce toggle (Broker mode)
-  http_server.on("/api/set-mdns-reannounce", HTTP_POST, []() {
+  http_server.on("/api/set-mdns-reannounce", HTTP_POST,[]() {
+    log_request();
     if (!http_server.hasArg("enabled")) {
       http_server.send(400, "application/json",
                        "{\"error\":\"missing enabled parameter\"}");
@@ -77,7 +93,8 @@ void webserver_setup() {
   });
 
   // WiFi credentials endpoint (empty ssid = clear)
-  http_server.on("/api/set-wifi", HTTP_POST, []() {
+  http_server.on("/api/set-wifi", HTTP_POST,[]() {
+    log_request();
     if (!http_server.hasArg("ssid")) {
       http_server.send(400, "application/json",
                        "{\"error\":\"missing ssid parameter\"}");
@@ -97,13 +114,15 @@ void webserver_setup() {
   });
 
   // Reboot endpoint
-  http_server.on("/api/reboot", HTTP_POST, []() {
+  http_server.on("/api/reboot", HTTP_POST,[]() {
+    log_request();
     http_server.send(200, "application/json", "{\"status\":\"restarting\"}");
     delay(500);
     ESP.restart();
   });
 
-  http_server.on("/favicon.ico", []() {
+  http_server.on("/favicon.ico",[]() {
+    log_request();
     http_server.send(
         204); // 204 No Content telling Chrome to stop waiting immediately
   });
