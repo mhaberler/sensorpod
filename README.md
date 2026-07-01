@@ -53,9 +53,9 @@ In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The dev
 
 - **Host advertisement:** `esp32c6-5B0A24.local` (mDNS A/AAAA record)
 - **MQTT service:** `_mqtt._tcp.local` on port 1883
-  - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
+    - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
 - **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8080 with TXT record `path=/mqtt`
-  - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
+    - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
 - **HTTP service:** `_http._tcp.local` on port 80 (sysinfo + OTA web updater)
 - **Workstation:** `_workstation._tcp.local` (generic host advertisement)
 
@@ -147,7 +147,7 @@ flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
 
 can be found at https://github.com/mhaberler/sensorpod/releases
 
-download the `sensorpod_m5stack-nanoc6_firmware_0.0.1.bin`
+download the `sensorpod_m5stack-nanoc6_firmware_<latest version>.bin`
 
 Use [ESPTool](https://jason2866.github.io/esp32tool/) to flash the firmware
 
@@ -206,12 +206,12 @@ If no VL53L0X is detected at boot, polling is skipped and only the `status` topi
 
 The onboard LED (or RGB NeoPixel if present) provides real-time connection status:
 
-| LED Pattern | Color | Meaning |
-| --- | --- | --- |
-| **Solid** | Green | WiFi connected + MQTT broker (local or remote) is online and reachable |
-| **Slow blink** (500ms) | Orange | WiFi connected, but MQTT broker is down or unreachable |
-| **Fast blink** (200ms) | Red | WiFi disconnected; device is in AP-only mode or STA connection lost |
-| **Off** | — | LED disabled or device in idle state |
+| LED Pattern            | Color  | Meaning                                                                |
+| ---------------------- | ------ | ---------------------------------------------------------------------- |
+| **Solid**              | Green  | WiFi connected + MQTT broker (local or remote) is online and reachable |
+| **Slow blink** (500ms) | Orange | WiFi connected, but MQTT broker is down or unreachable                 |
+| **Fast blink** (200ms) | Red    | WiFi disconnected; device is in AP-only mode or STA connection lost    |
+| **Off**                | —      | LED disabled or device in idle state                                   |
 
 **Boot sequence:** After `setup()` completes, the LED flashes 5 times (100ms each) to indicate boot success.
 
