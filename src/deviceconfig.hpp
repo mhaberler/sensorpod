@@ -66,8 +66,34 @@ public:
     log_i("Device config: mdns_reann = %s", enabled ? "on" : "off");
     return true;
   }
+
+  static bool isWifiSleepEnabled() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return false;
+    bool enabled = prefs.getInt("wifi_sleep", 0) != 0; // default: sleep off
+    prefs.end();
+    return enabled;
+  }
+
+  static bool setWifiSleepEnabled(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for wifi_sleep");
+      return false;
+    }
+    size_t n = prefs.putInt("wifi_sleep", enabled ? 1 : 0);
+    prefs.end();
+    if (n == 0) {
+      log_e("Device config: failed to save wifi_sleep");
+      return false;
+    }
+    log_i("Device config: wifi_sleep = %s", enabled ? "on" : "off");
+    return true;
+  }
 };
 
 // Global role flag, set at boot from Preferences
 extern bool is_broker_mode;
 extern bool mdns_reannounce_enabled;
+extern bool wifi_sleep_enabled;

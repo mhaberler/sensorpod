@@ -13,6 +13,7 @@
 
 extern bool is_broker_mode;
 extern bool mdns_reannounce_enabled;
+extern bool wifi_sleep_enabled;
 extern bool improv_provisioning;
 
 String hostName;
@@ -150,6 +151,12 @@ void wifi_setup() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.STA.begin(false);
   WiFi.STA.setAutoReconnect(true);
+
+  // Disable STA modem-sleep by default so the responder keeps hearing mDNS
+  // multicast queries on a phone hotspot (a sleeping STA misses buffered
+  // multicast, letting discovered records expire). Toggle via web UI.
+  WiFi.setSleep(wifi_sleep_enabled);
+  log_w("WiFi modem-sleep: %s", WiFi.getSleep() ? "enabled" : "disabled");
 
   // AP always on (in both Broker and Client modes)
   start_ap();

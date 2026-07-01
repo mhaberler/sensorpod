@@ -2,9 +2,11 @@
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
 #include<WebServer.h>
+#include<WiFi.h>
 
 extern bool is_broker_mode;
 extern bool mdns_reannounce_enabled;
+extern bool wifi_sleep_enabled;
 
 WebServer http_server(80);
 
@@ -90,6 +92,27 @@ void webserver_setup() {
                      "{\"status\":\"saved\",\"restarting\":true}");
     delay(500);
     ESP.restart();
+  });
+
+  // WiFi modem-sleep toggle (both roles). Saved to NVS and applied live -
+  // no reboot. false = sleep off (keeps mDNS discovery alive on a hotspot).
+  http_server.on("/api/set-wifi-sleep", HTTP_POST,[]() {
+    log_request();
+    if (!http_server.hasArg("enabled")) {
+      http_server.send(400, "application/json",
+                       "{\"error\":\"missing enabled parameter\"}");
+      return;
+    }
+    bool on = http_server.arg("enabled").toInt() != 0;
+    if (!DeviceConfig::setWifiSleepEnabled(on)) {
+      http_server.send(500, "application/json",
+                       "{\"error\":\"failed to save setting\"}");
+      return;
+    }
+    wifi_sleep_enabled = on;
+    WiFi.setSleep(wifi_sleep_enabled);
+    http_server.send(200, "application/json",
+                     "{\"status\":\"saved\",\"applied\":true}");
   });
 
   // WiFi credentials endpoint (empty ssid = clear)
