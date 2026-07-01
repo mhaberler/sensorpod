@@ -38,7 +38,6 @@ ImprovWiFi improvSerial(&Serial);
 
 extern String hostName;
 bool is_broker_mode = true;
-bool mdns_reannounce_enabled = true;
 bool wifi_sleep_enabled = false;
 // True while an Improv provisioning connect is in progress, so the STA
 // reconnect watchdog in wifisetup.cpp stays out of Improv's way.
@@ -107,10 +106,8 @@ void setup() {
 
   // Read device role early
   is_broker_mode = DeviceConfig::isBrokerMode();
-  mdns_reannounce_enabled = DeviceConfig::isMdnsReannounceEnabled();
   wifi_sleep_enabled = DeviceConfig::isWifiSleepEnabled();
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
-  log_d("mDNS re-announce: %s", mdns_reannounce_enabled ? "on" : "off");
   log_d("WiFi modem-sleep: %s", wifi_sleep_enabled ? "on" : "off");
 
 #if defined(USE_M5UNIFIED)

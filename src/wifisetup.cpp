@@ -12,7 +12,6 @@
 #include "mdns_state.hpp"
 
 extern bool is_broker_mode;
-extern bool mdns_reannounce_enabled;
 extern bool wifi_sleep_enabled;
 extern bool improv_provisioning;
 
@@ -33,41 +32,6 @@ MdnsAnnounce mdns_services[4];
 size_t mdns_count = 0;
 static String mqttInstance, mqttWsInstance, httpInstance;
 static wl_status_t wifiStatus = WL_NO_SHIELD;
-
-#define MDNS_REANNOUNCE_INTERVAL_MS 15000
-#define MDNS_REANNOUNCE_MIN_GAP_MS 2000
-
-static unsigned long last_mdns_announce = 0;
-
-static bool mdns_announce_netif(const char *ifkey) {
-  esp_netif_t *netif = esp_netif_get_handle_from_ifkey(ifkey);
-  if (!netif)
-    return false;
-  esp_netif_ip_info_t info;
-  if (esp_netif_get_ip_info(netif, &info) != ESP_OK || info.ip.addr == 0)
-    return false;
-  mdns_netif_action(netif,
-                    static_cast<mdns_event_actions_t>(MDNS_EVENT_ANNOUNCE_IP4 |
-                                                      MDNS_EVENT_ANNOUNCE_IP6));
-  return true;
-}
-
-static void mdns_reannounce_if_due(unsigned long now, bool force_timer) {
-  if (!is_broker_mode || !mdns_reannounce_enabled)
-    return;
-  unsigned long elapsed = now - last_mdns_announce;
-  if (!force_timer && elapsed < MDNS_REANNOUNCE_MIN_GAP_MS)
-    return;
-  if (force_timer && elapsed < MDNS_REANNOUNCE_INTERVAL_MS)
-    return;
-
-  bool sent =
-      mdns_announce_netif("WIFI_STA_DEF") || mdns_announce_netif("WIFI_AP_DEF");
-  if (sent) {
-    last_mdns_announce = now;
-    log_d("mDNS re-announced");
-  }
-}
 
 static void add_mdns(const char *instance, const char *svc, const char *proto,
                      uint16_t port, const char *txt = nullptr) {
@@ -99,11 +63,9 @@ static void onNetworkEvent(arduino_event_id_t event) {
       // on the ESP-Hosted co-processor
       ESP.restart();
     }
-    mdns_reannounce_if_due(millis(), false);
     break;
   case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
     log_d("AP client got IP");
-    mdns_reannounce_if_due(millis(), false);
     break;
   case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
     log_w("STA disconnected");
@@ -245,12 +207,6 @@ void wifi_loop() {
       log_w("STA reconnect watchdog: re-attempting connect");
       startStaAttempt(sta_ssid, sta_pass);
     }
-  }
-
-  static unsigned long last_mdns_check = 0;
-  if (now - last_mdns_check >= 1000) {
-    last_mdns_check = now;
-    mdns_reannounce_if_due(now, true);
   }
 
   webserver_loop();

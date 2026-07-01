@@ -5,7 +5,6 @@
 #include<WiFi.h>
 
 extern bool is_broker_mode;
-extern bool mdns_reannounce_enabled;
 extern bool wifi_sleep_enabled;
 
 WebServer http_server(80);
@@ -67,27 +66,6 @@ void webserver_setup() {
     }
     String hostname = http_server.arg("hostname");
     DeviceConfig::setSelectedBrokerHostname(hostname);
-    http_server.send(200, "application/json",
-                     "{\"status\":\"saved\",\"restarting\":true}");
-    delay(500);
-    ESP.restart();
-  });
-
-  // mDNS re-announce toggle (Broker mode)
-  http_server.on("/api/set-mdns-reannounce", HTTP_POST,[]() {
-    log_request();
-    if (!http_server.hasArg("enabled")) {
-      http_server.send(400, "application/json",
-                       "{\"error\":\"missing enabled parameter\"}");
-      return;
-    }
-    bool on = http_server.arg("enabled").toInt() != 0;
-    if (!DeviceConfig::setMdnsReannounceEnabled(on)) {
-      http_server.send(500, "application/json",
-                       "{\"error\":\"failed to save setting\"}");
-      return;
-    }
-    mdns_reannounce_enabled = on;
     http_server.send(200, "application/json",
                      "{\"status\":\"saved\",\"restarting\":true}");
     delay(500);

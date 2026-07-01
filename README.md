@@ -61,8 +61,6 @@ In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The dev
 
 Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
 
-In Broker mode, services are re-announced every 15s (and immediately on STA connect or AP client DHCP assignment) to refresh stale client caches.
-
 **Client Mode:** No mDNS announcements. Instead, the device queries `_mqtt._tcp.local` to discover available brokers and displays them in the web UI dropdown. Discovered brokers show both instance name and IP.
 
 On recording start, Sensor Logger connects to the broker (local or remote) and subscribes (typically to topic `#` — all topics). Sensor Logger can then run in the background logging arbitrary sensors including Bluetooth sensors which are not supported natively.

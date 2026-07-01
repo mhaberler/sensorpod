@@ -37,36 +37,6 @@ public:
     log_d("Device config: broker_host = %s", hostname.c_str());
   }
 
-  static bool isMdnsReannounceEnabled() {
-    Preferences prefs;
-    if (!prefs.begin("device-config", true))
-      return true;
-    bool enabled = true;
-    if (prefs.isKey("mdns_reann")) {
-      enabled = prefs.getInt("mdns_reann", 1) != 0;
-    } else if (prefs.isKey("mdns_reannounce")) {
-      enabled = prefs.getBool("mdns_reannounce", true);
-    }
-    prefs.end();
-    return enabled;
-  }
-
-  static bool setMdnsReannounceEnabled(bool enabled) {
-    Preferences prefs;
-    if (!prefs.begin("device-config", false)) {
-      log_e("Device config: failed to open NVS for mdns_reann");
-      return false;
-    }
-    size_t n = prefs.putInt("mdns_reann", enabled ? 1 : 0);
-    prefs.end();
-    if (n == 0) {
-      log_e("Device config: failed to save mdns_reann");
-      return false;
-    }
-    log_i("Device config: mdns_reann = %s", enabled ? "on" : "off");
-    return true;
-  }
-
   static bool isWifiSleepEnabled() {
     Preferences prefs;
     if (!prefs.begin("device-config", true))
@@ -95,5 +65,4 @@ public:
 
 // Global role flag, set at boot from Preferences
 extern bool is_broker_mode;
-extern bool mdns_reannounce_enabled;
 extern bool wifi_sleep_enabled;

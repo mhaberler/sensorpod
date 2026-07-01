@@ -100,7 +100,6 @@ static void json_kv_i(String &out, const char *k, int32_t v, bool &first) {
 void sysinfo_html(String &out, bool is_broker_mode) {
   const esp_partition_t *running = esp_ota_get_running_partition();
   const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
-  const bool mdns_reannounce = DeviceConfig::isMdnsReannounceEnabled();
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
 
   out += "<!DOCTYPE HTML><html><head><meta charset='utf-8'>";
@@ -135,19 +134,6 @@ void sysinfo_html(String &out, bool is_broker_mode) {
           is_broker_mode ? "Client" : "Broker");
   out += "<button type='button' class='config-btn danger' "
          "onclick='reboot()'>Reboot</button></form>";
-
-  out += "<form id='mdnsForm'>";
-  appendf(out, "<p><strong>mDNS re-announce:</strong> %s</p>",
-          mdns_reannounce ? "Enabled" : "Disabled");
-  appendf(out, "<input type='hidden' name='enabled' value='%d'>",
-          mdns_reannounce ? 0 : 1);
-  appendf(out,
-          "<button type='button' class='config-btn' "
-          "onclick='saveMdnsReannounce()'>%s mDNS Re-announce &amp; "
-          "Restart</button>",
-          mdns_reannounce ? "Disable" : "Enable");
-  out += "<p><small>Broker mode only. Re-announces services every 15s and on "
-         "network events.</small></p></form>";
 
   out += "<form id='wifiSleepForm'>";
   appendf(out, "<p><strong>WiFi modem-sleep:</strong> %s</p>",
@@ -239,15 +225,6 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "x-www-form-urlencoded'},body:'ssid='+encodeURIComponent(s)+'&password='+"
       "encodeURIComponent(p)})"
       ".then(r=>r.json()).then(d=>{alert('WiFi saved, device "
-      "restarting...')}).catch(e=>alert('Error: '+e))}"
-      "function saveMdnsReannounce(){"
-      "var e=document.querySelector('#mdnsForm input[name=enabled]').value;"
-      "fetch('/api/"
-      "set-mdns-reannounce',{method:'POST',headers:{'Content-Type':"
-      "'application/x-www-form-urlencoded'},body:'enabled='+e})"
-      ".then(r=>r.json()).then(d=>{if(d.error){alert('Error: "
-      "'+d.error);return;}"
-      "alert('mDNS setting saved, device "
       "restarting...')}).catch(e=>alert('Error: '+e))}"
       "function saveWifiSleep(){"
       "var e=document.querySelector('#wifiSleepForm input[name=enabled]').value;"
@@ -398,7 +375,6 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 void sysinfo_json(String &out, bool is_broker_mode) {
   const esp_partition_t *running = esp_ota_get_running_partition();
   const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
-  const bool mdns_reannounce = DeviceConfig::isMdnsReannounceEnabled();
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
   bool first = true;
   out += '{';
@@ -448,7 +424,6 @@ void sysinfo_json(String &out, bool is_broker_mode) {
 #endif
   json_kv_u(out, "uptime_s", millis() / 1000, first);
   json_kv_u(out, "broker_mode", is_broker_mode ? 1 : 0, first);
-  json_kv_u(out, "mdns_reannounce", mdns_reannounce ? 1 : 0, first);
   json_kv_u(out, "wifi_sleep", wifi_sleep ? 1 : 0, first);
 
   json_kv_str(out, "chip_model", ESP.getChipModel(), first);
