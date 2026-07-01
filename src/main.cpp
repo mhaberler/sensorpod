@@ -99,7 +99,12 @@ static String resolve_broker_host(const String &host) {
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
+  // USB-Serial/JTAG (C6/H2/P4) blocks TX until a host attaches; wait briefly
+  // so early logs are visible when a terminal is present, but boot headless.
+  unsigned long serial_t0 = millis();
+  while (!Serial && millis() - serial_t0 < 1500) {
+    delay(10);
+  }
   listEnv();
   hostName = WiFi.getHostname();
   ledSetup();
