@@ -50,8 +50,10 @@ Multi-file Arduino sketch. Current sources:
   Improv-WiFi over serial, tries cached creds from NVS, and starts the HTTP
   server on connect. `loop()` watches `WiFi.status()` and falls back to
   Improv-WiFi BLE provisioning after `TIME_TO_CONNECT` (15s on P4, 8s
-  elsewhere). 5× click on the button clears creds and restarts (factory
-  reset); long-press wipes creds without reboot.
+  elsewhere). Long-press (`longPressErase`) wipes creds and stops STA
+  without reboot; AP stays up. Click counts (single/double/multi) set
+  `numClicks` but are not wired to any action on this branch (no 5×
+  factory reset).
 - `src/wifisetup.cpp` — AP + STA bring-up, mDNS announcements
   (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`). Brings up `WebServer http_server(80)`
   via `webserver_setup()`. WiFi runs on AP+STA simultaneously. AP password is `hostName`

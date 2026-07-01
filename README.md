@@ -136,6 +136,13 @@ pio run -e m5stack-nanoc6 -t upload -t monitor
 pio run -e m5stack-nanoc6 -t firmware
 ```
 
+On the USB-Serial/JTAG boards (C6/H2/P4/C5), `Serial` is the native USB
+peripheral. The firmware boots headless — it waits at most ~1.5s for a host
+to attach, then proceeds regardless — so it runs fine on battery with no
+cable. The monitor no longer resets the board on connect (`monitor_rts/dtr=0`),
+so to catch the boot banner open the monitor within ~1.5s of resetting, or
+flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
+
 ## Pre-built firmware
 
 can be found at https://github.com/mhaberler/sensorpod/releases
@@ -170,13 +177,13 @@ The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag, which is composed
 
 ## WiFi provisioning
 
-SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol (BLE transport is not enabled in this firmware). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
+SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol. If serial provisioning doesn't complete within `TIME_TO_CONNECT` (15s on P4, 8s elsewhere), the firmware also falls back to Improv **BLE** provisioning (enabled via the `-DIMPROV_WIFI_BLE_ENABLED` flag in the `[improv]` block). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
 
 For SensorPod use the __Improv via Serial__ button.
 
 Connect to your devices` port and set SSID and password for your Access Point or Mobile hotspot..
 
-The device's own AP is named `{hostname}` (e.g., `esp32c6-5B0A24`, derived from MAC unless overridden by `-DHOSTNAME=…` at build time) with PSK = the same hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
+The device's own AP is named `{hostname}` (e.g., `esp32c6-5B0A24`, derived from the MAC via `WiFi.getHostname()`) with PSK = the same hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
 
 ### Erasing credentials
 
@@ -210,7 +217,7 @@ The onboard LED (or RGB NeoPixel if present) provides real-time connection statu
 
 **Improv provisioning:** When Improv WiFi provisioning is active (serial or BLE):
 
-- Error: 3 rapid blinks (2000ms each)
+- Error: 3 slow blinks (2000ms each)
 - Success: 3 quick blinks (100ms each)
 
 The continuous status LED is updated every loop iteration based on WiFi and MQTT state, so the pattern reflects the current connection status in real-time.
@@ -222,12 +229,12 @@ The continuous status LED is updated every loop iteration based on WiFi and MQTT
 Key options in `platformio.ini`:
 
 ```ini
--DCORE_DEBUG_LEVEL=5    # 0=none, 5=verbose (release env uses 1)
+-DCORE_DEBUG_LEVEL=4    # 0=none, 5=verbose (debug/default env uses 4, release uses 2)
 -DMQTT_PORT=1883
 -DMQTTWS_PORT=8080
 ```
 
-Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`). Override with `-DHOSTNAME=\"custom-name\"` for a specific board.
+Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`) via `WiFi.getHostname()`.
 
 `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
 
