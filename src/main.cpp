@@ -39,10 +39,14 @@ ImprovWiFi improvSerial(&Serial);
 extern String hostName;
 bool is_broker_mode = true;
 bool mdns_reannounce_enabled = true;
+// True while an Improv provisioning connect is in progress, so the STA
+// reconnect watchdog in wifisetup.cpp stays out of Improv's way.
+bool improv_provisioning = false;
 
 void wifi_setup(void);
 void wifi_loop(void);
 void startStaAttempt(const String &ssid, const String &pass);
+void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
 void button_setup(void);
 void button_loop(void);
@@ -53,13 +57,16 @@ std::optional<uint16_t> lox_poll(TwoWire &wire);
 
 void onImprovWiFiErrorCb(ImprovTypes::Error err) {
   log_e("Improv error %d", err);
+  improv_provisioning = false;
   WiFi.setAutoReconnect(true);
   blinkLed(2000, 3);
 }
 
 void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
   log_i("Improv provisioned ssid=%s", ssid);
+  improv_provisioning = false;
   saveWiFiCredentials(ssid, password);
+  cacheStaCredentials(ssid, password);
   WiFi.setAutoReconnect(true);
   blinkLed(100, 3);
   startStaAttempt(String(ssid), String(password));
@@ -68,6 +75,7 @@ void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
 // Disable auto-reconnect before Improv's WiFi.begin() to prevent driver
 // interference, then delegate to the library's default connect logic.
 bool onImprovCustomConnect(const char *ssid, const char *password) {
+  improv_provisioning = true;
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(false);
   delay(50);

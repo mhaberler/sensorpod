@@ -13,8 +13,18 @@
 
 extern bool is_broker_mode;
 extern bool mdns_reannounce_enabled;
+extern bool improv_provisioning;
 
 String hostName;
+
+// Cached STA credentials for the reconnect watchdog (see wifi_loop). The
+// Arduino WiFi driver treats WIFI_REASON_AUTH_FAIL as fatal and stops
+// auto-reconnecting, which strands the STA when an AP (e.g. a phone hotspot)
+// disappears and returns not-yet-ready. The watchdog re-issues the connect.
+static String sta_ssid, sta_pass;
+
+#define STA_RECONNECT_TIMEOUT_MS 20000  // STA down this long -> start retrying
+#define STA_RECONNECT_INTERVAL_MS 15000 // min gap between our retry attempts
 
 static uint8_t prev_clients = 255;
 
@@ -108,6 +118,11 @@ void startStaAttempt(const String &ssid, const String &pass) {
   WiFi.STA.connect(ssid.c_str(), pass.c_str());
 }
 
+void cacheStaCredentials(const String &ssid, const String &pass) {
+  sta_ssid = ssid;
+  sta_pass = pass;
+}
+
 void stopSta() { WiFi.STA.disconnect(false, true); }
 
 static void start_ap() {
@@ -145,6 +160,7 @@ void wifi_setup() {
     String ssid, pass;
     if (loadWiFiCredentials(ssid, pass)) {
       log_w("Broker mode: loaded creds, starting STA");
+      cacheStaCredentials(ssid, pass);
       start_sta(ssid, pass);
     } else {
       log_w("Broker mode: no creds, AP-only");
@@ -154,6 +170,7 @@ void wifi_setup() {
     String ssid, pass;
     if (loadWiFiCredentials(ssid, pass)) {
       log_w("Client mode: loaded creds, starting STA");
+      cacheStaCredentials(ssid, pass);
       start_sta(ssid, pass);
     } else {
       log_w("Client mode: no creds, Improv provisioning required");
@@ -204,8 +221,26 @@ void wifi_loop() {
     wifiStatus = s;
   }
 
-  static unsigned long last_mdns_check = 0;
   unsigned long now = millis();
+
+  // STA reconnect watchdog: the Arduino WiFi driver gives up permanently on
+  // WIFI_REASON_AUTH_FAIL, so after a hotspot toggles off/on the STA can stay
+  // stuck at WL_IDLE_STATUS forever. Re-issue the connect ourselves once STA
+  // has been down long enough, unless Improv is provisioning.
+  if (sta_ssid.length() > 0 && !improv_provisioning) {
+    static unsigned long last_sta_ok = 0;
+    static unsigned long last_sta_retry = 0;
+    if (s == WL_CONNECTED) {
+      last_sta_ok = now;
+    } else if (now - last_sta_ok > STA_RECONNECT_TIMEOUT_MS &&
+               now - last_sta_retry > STA_RECONNECT_INTERVAL_MS) {
+      last_sta_retry = now;
+      log_w("STA reconnect watchdog: re-attempting connect");
+      startStaAttempt(sta_ssid, sta_pass);
+    }
+  }
+
+  static unsigned long last_mdns_check = 0;
   if (now - last_mdns_check >= 1000) {
     last_mdns_check = now;
     mdns_reannounce_if_due(now, true);
