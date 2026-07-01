@@ -89,8 +89,8 @@ void cacheStaCredentials(const String &ssid, const String &pass) {
 void stopSta() { WiFi.STA.disconnect(false, true); }
 
 static void start_ap() {
-  String apSSID = hostName;
-  String apPASS = hostName;
+  String apSSID = hostName + ".local";
+  String apPASS = hostName + ".local";
   log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
   WiFi.AP.create(apSSID, apPASS);
   WiFi.AP.enableIPv6();

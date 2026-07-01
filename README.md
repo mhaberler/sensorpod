@@ -183,7 +183,7 @@ For SensorPod use the __Improv via Serial__ button.
 
 Connect to your devices` port and set SSID and password for your Access Point or Mobile hotspot..
 
-The device's own AP is named `{hostname}` (e.g., `esp32c6-5B0A24`, derived from the MAC via `WiFi.getHostname()`) with PSK = the same hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
+The device's own AP is named `{hostname}.local` (e.g., `esp32c6-5B0A24.local`, hostname derived from the MAC via `WiFi.getHostname()`) with PSK = the same `{hostname}.local` string. Using the `.local` mDNS name as the SSID means the SSID doubles as the device's hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
 
 ### Erasing credentials
 

@@ -56,8 +56,9 @@ Multi-file Arduino sketch. Current sources:
   factory reset).
 - `src/wifisetup.cpp` — AP + STA bring-up, mDNS announcements
   (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`). Brings up `WebServer http_server(80)`
-  via `webserver_setup()`. WiFi runs on AP+STA simultaneously. AP password is `hostName`
-  (runtime hostname string).
+  via `webserver_setup()`. WiFi runs on AP+STA simultaneously. AP SSID **and**
+  PSK are both `hostName + ".local"` (so the SSID doubles as the device
+  hostname); WPA2-protected, not open.
 - `src/webserver.cpp` — HTTP server lifecycle. `webserver_setup()` registers routes
   (`/` sysinfo HTML, `/data` JSON, `/update` when OTA enabled) and calls `begin()`.
   `webserver_loop()` handles incoming requests.
@@ -86,14 +87,14 @@ Single firmware supports two runtime modes, switchable via web UI without reflas
 
 - **Broker Mode (default):**
   - Local MQTT hub (PicoMQTT::Server, TCP 1883 + WS 8080)
-  - AP always on (open, password = `hostName`)
+  - AP always on (SSID + PSK both `hostName + ".local"`, WPA2)
   - STA optional (if WiFi creds exist)
   - Announces via mDNS (`_mqtt._tcp.local`, `_mqtt-ws._tcp.local`, `_http._tcp`)
   - All topics prefixed with `hostName/` (e.g., `sensorpod/VL53L0X`)
 
 - **Client Mode:**
   - Connects to remote broker discovered via mDNS
-  - AP always on (open, password = `hostName`)
+  - AP always on (SSID + PSK both `hostName + ".local"`, WPA2)
   - STA required (cannot function without WiFi)
   - Discovers available brokers every 10s, retries with exponential backoff (1s→2s→4s→8s→16s→60s cap)
   - Publishes to remote broker, all topics prefixed with `hostName/`
