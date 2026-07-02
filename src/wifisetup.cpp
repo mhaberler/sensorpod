@@ -4,6 +4,7 @@
 #include <PicoMQTT.h>
 #include <WiFi.h>
 #include <esp_netif.h>
+#include <esp_wifi.h>
 
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
@@ -33,6 +34,49 @@ size_t mdns_count = 0;
 static String mqttInstance, mqttWsInstance, httpInstance;
 static wl_status_t wifiStatus = WL_NO_SHIELD;
 
+static int sta_channel = 0;
+static wifi_auth_mode_t sta_authmode = WIFI_AUTH_OPEN;
+static bool sta_is_5g = false;
+
+static const char *auth_mode_str(wifi_auth_mode_t mode) {
+  switch (mode) {
+  case WIFI_AUTH_OPEN:
+    return "OPEN";
+  case WIFI_AUTH_WEP:
+    return "WEP";
+  case WIFI_AUTH_WPA_PSK:
+    return "WPA_PSK";
+  case WIFI_AUTH_WPA2_PSK:
+    return "WPA2_PSK";
+  case WIFI_AUTH_WPA_WPA2_PSK:
+    return "WPA_WPA2_PSK";
+  case WIFI_AUTH_WPA3_PSK:
+    return "WPA3_PSK";
+  case WIFI_AUTH_WPA2_WPA3_PSK:
+    return "WPA2_WPA3_PSK";
+  case WIFI_AUTH_OWE:
+    return "OWE";
+  default:
+    return "?";
+  }
+}
+
+int wifi_sta_channel() { return sta_channel; }
+const char *wifi_sta_band() { return sta_is_5g ? "5GHz" : "2.4GHz"; }
+const char *wifi_sta_encryption() { return auth_mode_str(sta_authmode); }
+
+// ESP32's single-radio AP+STA mode forces the AP onto whatever channel the
+// STA is connected to, once STA associates - the requested channel passed
+// to WiFi.AP.create() is only a starting point. Read back the effective
+// channel rather than trusting the request.
+int wifi_ap_channel() {
+  wifi_config_t conf;
+  if (esp_wifi_get_config(WIFI_IF_AP, &conf) == ESP_OK) {
+    return conf.ap.channel;
+  }
+  return 0;
+}
+
 static void add_mdns(const char *instance, const char *svc, const char *proto,
                      uint16_t port, const char *txt = nullptr) {
   if (mdns_count >= sizeof(mdns_services) / sizeof(mdns_services[0]))
@@ -57,6 +101,19 @@ static void onNetworkEvent(arduino_event_id_t event) {
     log_w("STA connected to %s %s RSSI %d IP: %s", WiFi.STA.SSID().c_str(),
           WiFi.STA.BSSIDstr().c_str(), WiFi.STA.RSSI(),
           WiFi.STA.localIP().toString().c_str());
+    {
+      wifi_ap_record_t info;
+      if (esp_wifi_sta_get_ap_info(&info) == ESP_OK) {
+        sta_channel = info.primary;
+        sta_authmode = info.authmode;
+        sta_is_5g = sta_channel > 14 || info.phy_11a || info.phy_11ac ||
+                    info.phy_11ax;
+        log_w("STA band=%s channel=%u encryption=%s",
+              sta_is_5g ? "5GHz" : "2.4GHz", sta_channel,
+              auth_mode_str(sta_authmode));
+      }
+      log_w("AP channel=%d (may have followed STA)", wifi_ap_channel());
+    }
     if (Network.isOnline() && updateEspHostedSlave()) {
       // Restart the host ESP32 after successful update
       // This is currently required to properly activate the new firmware
@@ -96,6 +153,7 @@ static void start_ap() {
   WiFi.AP.enableIPv6();
   WiFi.AP.begin();
   WiFi.AP.enableDhcpCaptivePortal();
+  log_w("AP channel=%d", wifi_ap_channel());
 }
 
 static void start_sta(const String &ssid, const String &pass) {

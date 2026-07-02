@@ -31,6 +31,10 @@
 #define BUILD_HOST "unknown"
 #endif
 extern String hostName;
+int wifi_sta_channel();
+const char *wifi_sta_band();
+const char *wifi_sta_encryption();
+int wifi_ap_channel();
 
 static void appendf(String &out, const char *fmt, ...) {
   char buf[160];
@@ -242,7 +246,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>STA SSID: %s</li>", WiFi.SSID().c_str());
   appendf(out, "<li>STA IP: %s</li>", WiFi.localIP().toString().c_str());
   appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
+  appendf(out, "<li>STA Channel: %d</li>", wifi_sta_channel());
+  appendf(out, "<li>STA Band: %s</li>", wifi_sta_band());
+  appendf(out, "<li>STA Encryption: %s</li>", wifi_sta_encryption());
   appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
+  appendf(out, "<li>AP Channel: %d</li>", wifi_ap_channel());
   appendf(out, "<li>AP clients: %u</li>", (unsigned)WiFi.softAPgetStationNum());
   appendf(out, "<li>mDNS: %s.local", hostName.c_str());
   if (mdns_count) {
@@ -473,7 +481,11 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_str(out, "net_sta_ssid", WiFi.SSID().c_str(), first);
   json_kv_str(out, "net_sta_ip", WiFi.localIP().toString().c_str(), first);
   json_kv_i(out, "net_sta_rssi", WiFi.RSSI(), first);
+  json_kv_i(out, "net_sta_channel", wifi_sta_channel(), first);
+  json_kv_str(out, "net_sta_band", wifi_sta_band(), first);
+  json_kv_str(out, "net_sta_encryption", wifi_sta_encryption(), first);
   json_kv_str(out, "net_ap_ip", WiFi.softAPIP().toString().c_str(), first);
+  json_kv_i(out, "net_ap_channel", wifi_ap_channel(), first);
   json_kv_u(out, "net_ap_clients", WiFi.softAPgetStationNum(), first);
 
   if (!first)
