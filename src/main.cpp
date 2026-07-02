@@ -116,6 +116,7 @@ void setup() {
   }
   listEnv();
   hostName = WiFi.getHostname();
+  hostName.toLowerCase();
   ledSetup();
 
   // Read device role early

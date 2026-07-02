@@ -94,8 +94,10 @@ void blinkLed(int d, int times, uint32_t color) {
 
 // LED status feedback: WiFi/broker connection state
 void updateLed(LEDState state) {
-    _led_state = state;
-    _led_last_toggle = millis();
+    if (state != _led_state) {
+        _led_state = state;
+        _led_last_toggle = millis();
+    }
 }
 
 void ledLoop() {
