@@ -38,6 +38,31 @@ static int sta_channel = 0;
 static wifi_auth_mode_t sta_authmode = WIFI_AUTH_OPEN;
 static bool sta_is_5g = false;
 
+// Set while updateEspHostedSlave() is flashing the ESP-Hosted co-processor.
+// The flash runs over the same RPC transport as most WiFi.* accessors
+// (softAPgetStationNum, RSSI, SSID, BSSID, channel/config reads all go
+// through esp_wifi_sta_get_ap_info/esp_wifi_get_config over RPC). Calling
+// any of them concurrently faults the RPC layer - observed as a Guru
+// Meditation Error in rpc_wifi_ap_get_sta_list, and separately an assert
+// abort in rpc_wifi_sta_get_ap_info triggered by an HTTP request reading
+// WiFi.RSSI() while a hosted-slave OTA was in progress. Rather than
+// guarding every individual accessor, callers check hosted_update_busy()
+// and skip WiFi RPC work entirely for the (few-second) duration of the
+// flash: wifi_loop() skips webserver_loop(), main.cpp skips the periodic
+// status publish.
+static volatile bool hosted_update_in_progress = false;
+static uint8_t last_ap_station_num = 0;
+
+bool hosted_update_busy() { return hosted_update_in_progress; }
+
+uint8_t safe_ap_station_num() {
+  if (hosted_update_in_progress) {
+    return last_ap_station_num;
+  }
+  last_ap_station_num = WiFi.softAPgetStationNum();
+  return last_ap_station_num;
+}
+
 static const char *auth_mode_str(wifi_auth_mode_t mode) {
   switch (mode) {
   case WIFI_AUTH_OPEN:
@@ -114,11 +139,16 @@ static void onNetworkEvent(arduino_event_id_t event) {
       }
       log_w("AP channel=%d (may have followed STA)", wifi_ap_channel());
     }
-    if (Network.isOnline() && updateEspHostedSlave()) {
-      // Restart the host ESP32 after successful update
-      // This is currently required to properly activate the new firmware
-      // on the ESP-Hosted co-processor
-      ESP.restart();
+    if (Network.isOnline()) {
+      hosted_update_in_progress = true;
+      bool updated = updateEspHostedSlave();
+      hosted_update_in_progress = false;
+      if (updated) {
+        // Restart the host ESP32 after successful update
+        // This is currently required to properly activate the new firmware
+        // on the ESP-Hosted co-processor
+        ESP.restart();
+      }
     }
     break;
   case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
@@ -237,7 +267,7 @@ void wifi_setup() {
 }
 
 void wifi_loop() {
-  uint8_t clients = WiFi.softAPgetStationNum();
+  uint8_t clients = safe_ap_station_num();
   if (prev_clients ^ clients) {
     log_w("AP clients: %u", clients);
     prev_clients = clients;
@@ -267,5 +297,11 @@ void wifi_loop() {
     }
   }
 
-  webserver_loop();
+  // Skip HTTP handling entirely while the hosted co-processor is being
+  // flashed - request handlers read WiFi.RSSI()/SSID()/etc., which would
+  // otherwise race the RPC transport the flash is using (see comment on
+  // hosted_update_in_progress above).
+  if (!hosted_update_in_progress) {
+    webserver_loop();
+  }
 }

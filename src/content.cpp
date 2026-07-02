@@ -35,6 +35,7 @@ int wifi_sta_channel();
 const char *wifi_sta_band();
 const char *wifi_sta_encryption();
 int wifi_ap_channel();
+uint8_t safe_ap_station_num();
 
 static void appendf(String &out, const char *fmt, ...) {
   char buf[160];
@@ -251,7 +252,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>STA Encryption: %s</li>", wifi_sta_encryption());
   appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
   appendf(out, "<li>AP Channel: %d</li>", wifi_ap_channel());
-  appendf(out, "<li>AP clients: %u</li>", (unsigned)WiFi.softAPgetStationNum());
+  appendf(out, "<li>AP clients: %u</li>", (unsigned)safe_ap_station_num());
   appendf(out, "<li>mDNS: %s.local", hostName.c_str());
   if (mdns_count) {
     out += "<ul>";
@@ -486,7 +487,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_str(out, "net_sta_encryption", wifi_sta_encryption(), first);
   json_kv_str(out, "net_ap_ip", WiFi.softAPIP().toString().c_str(), first);
   json_kv_i(out, "net_ap_channel", wifi_ap_channel(), first);
-  json_kv_u(out, "net_ap_clients", WiFi.softAPgetStationNum(), first);
+  json_kv_u(out, "net_ap_clients", safe_ap_station_num(), first);
 
   if (!first)
     out += ',';

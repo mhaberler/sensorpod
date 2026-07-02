@@ -49,6 +49,8 @@ void wifi_loop(void);
 void startStaAttempt(const String &ssid, const String &pass);
 void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
+uint8_t safe_ap_station_num();
+bool hosted_update_busy();
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
@@ -178,7 +180,9 @@ void loop() {
   }
 
   static unsigned long lastStatusPublish = 0;
-  if (now - lastStatusPublish > 1000) {
+  // Skip while the hosted co-processor is being flashed - WiFi.RSSI() races
+  // the RPC transport the flash uses (see wifisetup.cpp: hosted_update_in_progress).
+  if (!hosted_update_busy() && now - lastStatusPublish > 1000) {
     lastStatusPublish = now;
     JsonDocument doc;
     doc["uptime"] = now / 1000;
@@ -224,7 +228,7 @@ void loop() {
 
   // LED feedback: WiFi/broker connection status
   bool wifi_connected =
-      (WiFi.softAPgetStationNum() > 0) || (WiFi.status() == WL_CONNECTED);
+      (safe_ap_station_num() > 0) || (WiFi.status() == WL_CONNECTED);
   bool mqtt_connected = mqtt_device && mqtt_device->connected();
 
   LEDState led_state;
