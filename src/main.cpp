@@ -2,6 +2,7 @@
 #include <M5Unified.h>
 #endif
 #include "Adafruit_VL53L0X.h"
+#include "button.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "led.hpp"
@@ -48,8 +49,6 @@ void wifi_loop(void);
 void startStaAttempt(const String &ssid, const String &pass);
 void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
-void button_setup(void);
-void button_loop(void);
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
@@ -98,7 +97,17 @@ static String resolve_broker_host(const String &host) {
 }
 
 void setup() {
+#if defined(USE_M5UNIFIED)
+  auto cfg = M5.config();
+  cfg.output_power = true;
+  cfg.serial_baudrate = 115200;
+  M5.begin(cfg);
+  // M5.Ex_I2C.begin();
+  // Wire.end();
+  // Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
+#else
   Serial.begin(115200);
+#endif
   // USB-Serial/JTAG (C6/H2/P4) blocks TX until a host attaches; wait briefly
   // so early logs are visible when a terminal is present, but boot headless.
   unsigned long serial_t0 = millis();
@@ -115,14 +124,7 @@ void setup() {
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
   log_d("WiFi modem-sleep: %s", wifi_sleep_enabled ? "on" : "off");
 
-#if defined(USE_M5UNIFIED)
-  auto cfg = M5.config();
-  cfg.output_power = true;
-  M5.begin(cfg);
-  // M5.Ex_I2C.begin();
-  // Wire.end();
-  // Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
-#else
+#if !defined(USE_M5UNIFIED)
   Wire.begin(SDA_PIN, SCL_PIN, 400000);
 #endif
   startImprovSerialProvisioning();
@@ -171,8 +173,6 @@ void loop() {
       String payload;
       serializeJson(doc, payload);
       mqtt_publish("VL53L0X", payload.c_str());
-    } else {
-      numClicks = 0;
     }
   }
 
@@ -183,7 +183,10 @@ void loop() {
     doc["uptime"] = now / 1000;
     doc["cpu_temperature"] = temperatureRead();
     doc["rssi"] = WiFi.RSSI();
-
+    if (numClicks) {
+        doc["clicks"] = numClicks;
+        numClicks = 0;
+    }
     String payload;
     serializeJson(doc, payload);
     mqtt_publish("status", payload.c_str());
@@ -270,49 +273,4 @@ std::optional<uint16_t> lox_poll(TwoWire &wire) {
     return measure.RangeMilliMeter;
   }
   return std::nullopt;
-}
-
-#if defined(BUTTON_PIN)
-
-#include "OneButton.h"
-OneButton button(BUTTON_PIN, true,
-                 true); // Button pin, active low, pullup enabled
-
-void singleClick() {
-  log_i("singleClick() detected.");
-  numClicks = 1;
-}
-
-void doubleClick() {
-  log_i("doubleClick() detected.");
-  numClicks = 2;
-}
-
-void multiClick() {
-  int n = button.getNumberClicks();
-  log_i("%d clicks detected.", n);
-  numClicks = n;
-}
-
-void longPressErase() {
-  log_w("button long-press: erasing creds, AP-only mode");
-  clearWiFiCredentials();
-  stopSta();
-}
-
-#endif
-
-void button_setup(void) {
-#if defined(BUTTON_PIN)
-  button.attachClick(singleClick);
-  button.attachDoubleClick(doubleClick);
-  button.attachMultiClick(multiClick);
-  button.attachLongPressStart(longPressErase);
-#endif
-}
-
-void button_loop(void) {
-#if defined(BUTTON_PIN)
-  button.tick();
-#endif
 }

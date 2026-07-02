@@ -1,6 +1,11 @@
 #include "led.hpp"
 #include <Arduino.h>
 
+#if __has_include(<M5Unified.h>)
+#define HAS_M5UNIFIED
+#include <M5Unified.h>
+#endif
+
 static LEDState _led_state = LED_OFF;
 static unsigned long _led_last_toggle = 0;
 const unsigned long LED_FAST_BLINK_INTERVAL = 200;   // WiFi down
@@ -48,6 +53,25 @@ void blinkLed(int d, int times, uint32_t color) {
     }
 }
 
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+
+static bool _m5_led_on = false;
+
+void ledSetup() {
+    // M5.begin() already configures the power LED; nothing to do here.
+}
+
+void blinkLed(int d, int times, uint32_t color) {
+    (void)color;
+    for (int j = 0; j < times; j++) {
+        M5.Power.setLed(255);
+        delay(d);
+        M5.Power.setLed(0);
+        delay(d);
+    }
+    _m5_led_on = false;
+}
+
 #else
 
 void ledSetup() {}
@@ -76,6 +100,9 @@ void ledLoop() {
             _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
             digitalWrite(LED_PIN, LOW);
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+            M5.Power.setLed(0);
+            _m5_led_on = false;
 #endif
             break;
 
@@ -85,6 +112,9 @@ void ledLoop() {
             _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
             digitalWrite(LED_PIN, HIGH);
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+            M5.Power.setLed(255);
+            _m5_led_on = true;
 #endif
             break;
 
@@ -96,6 +126,9 @@ void ledLoop() {
                 _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
                 digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+                _m5_led_on = !_m5_led_on;
+                M5.Power.setLed(_m5_led_on ? 255 : 0);
 #endif
                 _led_last_toggle = now;
             }
@@ -109,6 +142,9 @@ void ledLoop() {
                 _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
                 digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+                _m5_led_on = !_m5_led_on;
+                M5.Power.setLed(_m5_led_on ? 255 : 0);
 #endif
                 _led_last_toggle = now;
             }
