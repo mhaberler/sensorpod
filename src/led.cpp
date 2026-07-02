@@ -39,6 +39,14 @@ void blinkLed(int d, int times, uint32_t color) {
 
 #elif defined(LED_SCENARIO_SINGLE)
 
+#if defined(LED_ACTIVE_LOW)
+constexpr int _LED_ON = LOW;
+constexpr int _LED_OFF = HIGH;
+#else
+constexpr int _LED_ON = HIGH;
+constexpr int _LED_OFF = LOW;
+#endif
+
 void ledSetup() {
     pinMode(LED_PIN, OUTPUT);
 }
@@ -46,9 +54,9 @@ void ledSetup() {
 void blinkLed(int d, int times, uint32_t color) {
     (void)color;
     for (int j = 0; j < times; j++) {
-        digitalWrite(LED_PIN, HIGH);
+        digitalWrite(LED_PIN, _LED_ON);
         delay(d);
-        digitalWrite(LED_PIN, LOW);
+        digitalWrite(LED_PIN, _LED_OFF);
         delay(d);
     }
 }
@@ -99,7 +107,7 @@ void ledLoop() {
             _led_pixel.setPixelColor(0, 0);
             _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
-            digitalWrite(LED_PIN, LOW);
+            digitalWrite(LED_PIN, _LED_OFF);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
             M5.Power.setLed(0);
             _m5_led_on = false;
@@ -111,7 +119,7 @@ void ledLoop() {
             _led_pixel.setPixelColor(0, 0x00FF00);  // Green
             _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
-            digitalWrite(LED_PIN, HIGH);
+            digitalWrite(LED_PIN, _LED_ON);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
             M5.Power.setLed(255);
             _m5_led_on = true;

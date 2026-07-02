@@ -222,7 +222,8 @@ void loop() {
   }
 
   // LED feedback: WiFi/broker connection status
-  bool wifi_connected = (WiFi.status() == WL_CONNECTED);
+  bool wifi_connected =
+      (WiFi.softAPgetStationNum() > 0) || (WiFi.status() == WL_CONNECTED);
   bool mqtt_connected = mqtt_device && mqtt_device->connected();
 
   LEDState led_state;

@@ -9,7 +9,7 @@ class CustomMQTTServer : public PicoMQTT::Server, public MQTTDevice {
   using PicoMQTT::Server::Server;
 
 public:
-  int32_t client_count, subscribed, messages;
+  int32_t client_count = 0, subscribed = 0, messages = 0;
 
   void begin() override {
     PicoMQTT::Server::begin();
