@@ -22,6 +22,10 @@ const unsigned long LED_SLOW_BLINK_INTERVAL = 500;   // Broker down
 static Adafruit_NeoPixel _led_pixel(1, RGB_LED_PIN, _LED_NEO_TYPE);
 
 void ledSetup() {
+#if defined(RGB_POWER_PIN)
+    pinMode(RGB_POWER_PIN, OUTPUT);
+    digitalWrite(RGB_POWER_PIN,RGB_POWER_ENABLE);
+#endif
     _led_pixel.begin();
     _led_pixel.show();
 }

@@ -1,4 +1,5 @@
-#if defined(USE_M5UNIFIED)
+#if __has_include(<M5Unified.h>)
+#define HAS_M5UNIFIED
 #include <M5Unified.h>
 #endif
 #include "Adafruit_VL53L0X.h"
@@ -99,7 +100,7 @@ static String resolve_broker_host(const String &host) {
 }
 
 void setup() {
-#if defined(USE_M5UNIFIED)
+#if defined(HAS_M5UNIFIED)
   auto cfg = M5.config();
   cfg.output_power = true;
   cfg.serial_baudrate = 115200;
@@ -127,7 +128,7 @@ void setup() {
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
   log_d("WiFi modem-sleep: %s", wifi_sleep_enabled ? "on" : "off");
 
-#if !defined(USE_M5UNIFIED)
+#if !defined(HAS_M5UNIFIED)
   Wire.begin(SDA_PIN, SCL_PIN, 400000);
 #endif
   startImprovSerialProvisioning();
@@ -163,7 +164,7 @@ void loop() {
 
   unsigned long now = millis();
   button_loop();
-#if defined(USE_M5UNIFIED)
+#if defined(HAS_M5UNIFIED)
   M5.update();
 #endif
   static unsigned long last_lox_poll = 0;
