@@ -175,11 +175,50 @@ void cacheStaCredentials(const String &ssid, const String &pass) {
 
 void stopSta() { WiFi.STA.disconnect(false, true); }
 
-static void start_ap() {
+// Scans in STA mode and picks the least-congested 2.4GHz channel (1-11,
+// preferring the non-overlapping 1/6/11 on ties). Only meaningful when no
+// STA will connect: ESP32's single-radio AP+STA mode forces the AP onto
+// whatever channel the STA associates to once it connects (see
+// wifi_ap_channel()'s comment), so this pick only sticks permanently in
+// the AP-only case. Blocking, ~2-6s.
+static int pick_low_interference_channel() {
+  WiFi.mode(WIFI_STA);
+  int n = WiFi.scanNetworks();
+  int count[12] = {}; // index 1..11 used
+  for (int i = 0; i < n; i++) {
+    int c = WiFi.channel(i);
+    log_w("AP channel scan: ch=%d rssi=%d ssid=%s", c, WiFi.RSSI(i),
+          WiFi.SSID(i).c_str());
+    if (c >= 1 && c <= 11)
+      count[c]++;
+  }
+  WiFi.scanDelete();
+  for (int c = 1; c <= 11; c++) {
+    if (count[c] > 0)
+      log_w("AP channel scan: channel %d in use by %d network(s)", c,
+            count[c]);
+  }
+  int best = 1;
+  for (int c = 2; c <= 11; c++) {
+    if (count[c] < count[best]) {
+      best = c;
+    } else if (count[c] == count[best]) {
+      bool c_pref = (c == 1 || c == 6 || c == 11);
+      bool best_pref = (best == 1 || best == 6 || best == 11);
+      if (c_pref && !best_pref)
+        best = c;
+    }
+  }
+  log_w("AP channel scan: %d networks seen, picked channel %d (count=%d)",
+        n, best, count[best]);
+  return best;
+}
+
+static void start_ap(int channel) {
   String apSSID = hostName + ".local";
   String apPASS = hostName + ".local";
   log_w("AP SSID: %s PW: %s", apSSID.c_str(), apPASS.c_str());
-  WiFi.AP.create(apSSID, apPASS);
+  WiFi.AP.create(apSSID, apPASS, channel);
   WiFi.AP.enableIPv6();
   WiFi.AP.begin();
   WiFi.AP.enableDhcpCaptivePortal();
@@ -199,6 +238,18 @@ void wifi_setup() {
 #endif
 
   WiFi.mode(WIFI_AP_STA);
+
+  // Only worth scanning when no STA will connect: once STA associates, the
+  // AP is forced onto its channel regardless of what we pick here (see
+  // pick_low_interference_channel()'s comment).
+  String ssid, pass;
+  bool have_creds = loadWiFiCredentials(ssid, pass);
+  int ap_channel = 1;
+  if (!have_creds) {
+    ap_channel = pick_low_interference_channel();
+    WiFi.mode(WIFI_AP_STA); // scan leaves mode as WIFI_STA
+  }
+
   WiFi.STA.begin(false);
   WiFi.STA.setAutoReconnect(true);
 
@@ -209,13 +260,12 @@ void wifi_setup() {
   log_w("WiFi modem-sleep: %s", WiFi.getSleep() ? "enabled" : "disabled");
 
   // AP always on (in both Broker and Client modes)
-  start_ap();
+  start_ap(ap_channel);
 
   // Branch on role for STA and mDNS setup
   if (is_broker_mode) {
     // Broker mode: STA optional
-    String ssid, pass;
-    if (loadWiFiCredentials(ssid, pass)) {
+    if (have_creds) {
       log_w("Broker mode: loaded creds, starting STA");
       cacheStaCredentials(ssid, pass);
       start_sta(ssid, pass);
@@ -224,8 +274,7 @@ void wifi_setup() {
     }
   } else {
     // Client mode: STA required
-    String ssid, pass;
-    if (loadWiFiCredentials(ssid, pass)) {
+    if (have_creds) {
       log_w("Client mode: loaded creds, starting STA");
       cacheStaCredentials(ssid, pass);
       start_sta(ssid, pass);
