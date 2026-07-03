@@ -344,13 +344,36 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>CPU: %u MHz</li></ul>", (unsigned)ESP.getCpuFreqMHz());
 
   out += "<h3>Memory</h3><ul>";
-  appendf(out, "<li>Heap free: %u</li>", (unsigned)ESP.getFreeHeap());
-  appendf(out, "<li>Heap min free: %u</li>", (unsigned)ESP.getMinFreeHeap());
-  appendf(out, "<li>Heap total: %u</li>", (unsigned)ESP.getHeapSize());
-  appendf(out, "<li>Heap max alloc: %u</li>", (unsigned)ESP.getMaxAllocHeap());
+  {
+    uint32_t heap_total = ESP.getHeapSize();
+    uint32_t heap_free = ESP.getFreeHeap();
+    uint32_t heap_min_free = ESP.getMinFreeHeap();
+    unsigned pct_free =
+        heap_total ? (unsigned)(100ULL * heap_free / heap_total) : 0;
+    unsigned hwm_pct =
+        heap_total ? (unsigned)(100ULL * heap_min_free / heap_total) : 0;
+    appendf(out, "<li>Heap total: %u</li>", (unsigned)heap_total);
+    appendf(out, "<li>Heap free: %u (%u%% free)", (unsigned)heap_free,
+            pct_free);
+    appendf(out,
+            " <span class='barwrap'><progress value='%u' max='100'>"
+            "</progress><span class='tick' style='left:%u%%'></span>"
+            "</span></li>",
+            pct_free, hwm_pct);
+    appendf(out, "<li>Heap min free (HWM): %u</li>", (unsigned)heap_min_free);
+    appendf(out, "<li>Heap max alloc: %u</li>",
+            (unsigned)ESP.getMaxAllocHeap());
+  }
   if (psramFound()) {
-    appendf(out, "<li>PSRAM size: %u</li>", (unsigned)ESP.getPsramSize());
-    appendf(out, "<li>PSRAM free: %u</li>", (unsigned)ESP.getFreePsram());
+    uint32_t psram_total = ESP.getPsramSize();
+    uint32_t psram_free = ESP.getFreePsram();
+    unsigned psram_pct_free =
+        psram_total ? (unsigned)(100ULL * psram_free / psram_total) : 0;
+    appendf(out, "<li>PSRAM size: %u</li>", (unsigned)psram_total);
+    appendf(out, "<li>PSRAM free: %u (%u%% free)", (unsigned)psram_free,
+            psram_pct_free);
+    appendf(out, " <progress value='%u' max='100'></progress></li>",
+            psram_pct_free);
   }
   out += "</ul>";
 
@@ -371,9 +394,16 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out,
             "<tr "
             "class='%s'><td>%s</td><td>%s</td><td>0x%02x</td><td>0x%06x</"
-            "td><td>%u</td><td>%s</td></tr>",
+            "td><td>%u",
             cls, p->label, part_type_name(p->type), p->subtype,
-            (unsigned)p->address, (unsigned)p->size, tag);
+            (unsigned)p->address, (unsigned)p->size);
+    if (p == running && p->size > 0) {
+      unsigned pct = (unsigned)(100ULL * ESP.getSketchSize() / p->size);
+      appendf(out,
+              "<br><progress value='%u' max='100'></progress> %u%%", pct,
+              pct);
+    }
+    appendf(out, "</td><td>%s</td></tr>", tag);
     it = esp_partition_next(it);
   }
   esp_partition_iterator_release(it);

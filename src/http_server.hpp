@@ -13,6 +13,8 @@ static constexpr const char *HTTP_PAGE_STYLE =
   ".run{background:#dfd}.nxt{background:#ffd}"
   "code{background:#eee;padding:1px 4px;border-radius:3px}"
   "progress{width:300px}"
+  ".barwrap{position:relative;display:inline-block}"
+  ".tick{position:absolute;top:0;bottom:0;width:2px;background:#c00}"
   "</style>";
 
 void sysinfo_html(String &out, bool is_broker_mode);
