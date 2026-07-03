@@ -245,6 +245,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 
   out += "<h3>Network</h3><ul>";
   appendf(out, "<li>STA SSID: %s</li>", WiFi.SSID().c_str());
+  appendf(out, "<li>BSSID: %s</li>", WiFi.BSSIDstr().c_str());
   appendf(out, "<li>STA IP: %s</li>", WiFi.localIP().toString().c_str());
   appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
   appendf(out, "<li>STA Channel: %d</li>", wifi_sta_channel());
