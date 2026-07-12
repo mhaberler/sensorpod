@@ -42,6 +42,8 @@ bool lox_present;
 #include "mqtt_client.hpp"
 ImprovWiFi improvSerial(&Serial);
 
+
+
 extern String hostName;
 bool is_broker_mode = true;
 bool wifi_sleep_enabled = false;
@@ -56,6 +58,8 @@ void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
 uint8_t safe_ap_station_num();
 bool hosted_update_busy();
+void bthome_setup();
+void bthome_loop();
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
@@ -142,6 +146,7 @@ void setup() {
   // i2c_scan(Wire);
   lox_present = lox_init(Wire);
   wifi_setup();
+  bthome_setup();
 
   // Initialize MQTT device based on role
   if (is_broker_mode) {
@@ -170,6 +175,7 @@ void loop() {
 
   unsigned long now = millis();
   button_loop();
+  bthome_loop();
 #if defined(HAS_M5UNIFIED)
   M5.update();
 #endif
