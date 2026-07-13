@@ -131,8 +131,8 @@ static void onNetworkEvent(arduino_event_id_t event) {
       if (esp_wifi_sta_get_ap_info(&info) == ESP_OK) {
         sta_channel = info.primary;
         sta_authmode = info.authmode;
-        sta_is_5g = sta_channel > 14 || info.phy_11a || info.phy_11ac ||
-                    info.phy_11ax;
+        sta_is_5g =
+            sta_channel > 14 || info.phy_11a || info.phy_11ac || info.phy_11ax;
         log_w("STA band=%s channel=%u encryption=%s",
               sta_is_5g ? "5GHz" : "2.4GHz", sta_channel,
               auth_mode_str(sta_authmode));
@@ -156,6 +156,14 @@ static void onNetworkEvent(arduino_event_id_t event) {
     break;
   case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
     log_w("STA disconnected");
+    break;
+  case ARDUINO_EVENT_WIFI_STA_GOT_IP6:
+    log_w("STA IPv6: link-local %s global %s",
+          WiFi.STA.linkLocalIPv6().toString().c_str(),
+          WiFi.STA.globalIPv6().toString().c_str());
+    break;
+  case ARDUINO_EVENT_WIFI_AP_GOT_IP6:
+    log_w("AP IPv6: link-local %s", WiFi.AP.linkLocalIPv6().toString().c_str());
     break;
   default:
     log_d("Network event: %s", NetworkEvents::eventName(event));
@@ -195,8 +203,7 @@ static int pick_low_interference_channel() {
   WiFi.scanDelete();
   for (int c = 1; c <= 11; c++) {
     if (count[c] > 0)
-      log_w("AP channel scan: channel %d in use by %d network(s)", c,
-            count[c]);
+      log_w("AP channel scan: channel %d in use by %d network(s)", c, count[c]);
   }
   int best = 1;
   for (int c = 2; c <= 11; c++) {
@@ -209,8 +216,8 @@ static int pick_low_interference_channel() {
         best = c;
     }
   }
-  log_w("AP channel scan: %d networks seen, picked channel %d (count=%d)",
-        n, best, count[best]);
+  log_w("AP channel scan: %d networks seen, picked channel %d (count=%d)", n,
+        best, count[best]);
   return best;
 }
 
@@ -251,6 +258,10 @@ void wifi_setup() {
   }
 
   WiFi.STA.begin(false);
+  // Must be set before connect: IPv6 (link-local + SLAAC) only comes up at
+  // netif start. Without it the mDNS responder has no AAAA to announce on
+  // the STA network.
+  WiFi.STA.enableIPv6();
   WiFi.STA.setAutoReconnect(true);
 
   // Disable STA modem-sleep by default so the responder keeps hearing mDNS

@@ -232,7 +232,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       ".then(r=>r.json()).then(d=>{alert('WiFi saved, device "
       "restarting...')}).catch(e=>alert('Error: '+e))}"
       "function saveWifiSleep(){"
-      "var e=document.querySelector('#wifiSleepForm input[name=enabled]').value;"
+      "var e=document.querySelector('#wifiSleepForm "
+      "input[name=enabled]').value;"
       "fetch('/api/"
       "set-wifi-sleep',{method:'POST',headers:{'Content-Type':"
       "'application/x-www-form-urlencoded'},body:'enabled='+e})"
@@ -247,11 +248,17 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>STA SSID: %s</li>", WiFi.SSID().c_str());
   appendf(out, "<li>BSSID: %s</li>", WiFi.BSSIDstr().c_str());
   appendf(out, "<li>STA IP: %s</li>", WiFi.localIP().toString().c_str());
+  appendf(out, "<li>STA IPv6 link-local: %s</li>",
+          WiFi.STA.linkLocalIPv6().toString().c_str());
+  appendf(out, "<li>STA IPv6 global: %s</li>",
+          WiFi.STA.globalIPv6().toString().c_str());
   appendf(out, "<li>STA RSSI: %d</li>", WiFi.RSSI());
   appendf(out, "<li>STA Channel: %d</li>", wifi_sta_channel());
   appendf(out, "<li>STA Band: %s</li>", wifi_sta_band());
   appendf(out, "<li>STA Encryption: %s</li>", wifi_sta_encryption());
   appendf(out, "<li>AP IP: %s</li>", WiFi.softAPIP().toString().c_str());
+  appendf(out, "<li>AP IPv6 link-local: %s</li>",
+          WiFi.AP.linkLocalIPv6().toString().c_str());
   appendf(out, "<li>AP Channel: %d</li>", wifi_ap_channel());
   appendf(out, "<li>AP clients: %u</li>", (unsigned)safe_ap_station_num());
   appendf(out, "<li>mDNS: %s.local", hostName.c_str());
@@ -399,8 +406,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             (unsigned)p->address, (unsigned)p->size);
     if (p == running && p->size > 0) {
       unsigned pct = (unsigned)(100ULL * ESP.getSketchSize() / p->size);
-      appendf(out,
-              "<br><progress value='%u' max='100'></progress> %u%%", pct,
+      appendf(out, "<br><progress value='%u' max='100'></progress> %u%%", pct,
               pct);
     }
     appendf(out, "</td><td>%s</td></tr>", tag);
@@ -512,11 +518,17 @@ void sysinfo_json(String &out, bool is_broker_mode) {
 
   json_kv_str(out, "net_sta_ssid", WiFi.SSID().c_str(), first);
   json_kv_str(out, "net_sta_ip", WiFi.localIP().toString().c_str(), first);
+  json_kv_str(out, "net_sta_ip6_ll",
+              WiFi.STA.linkLocalIPv6().toString().c_str(), first);
+  json_kv_str(out, "net_sta_ip6_global",
+              WiFi.STA.globalIPv6().toString().c_str(), first);
   json_kv_i(out, "net_sta_rssi", WiFi.RSSI(), first);
   json_kv_i(out, "net_sta_channel", wifi_sta_channel(), first);
   json_kv_str(out, "net_sta_band", wifi_sta_band(), first);
   json_kv_str(out, "net_sta_encryption", wifi_sta_encryption(), first);
   json_kv_str(out, "net_ap_ip", WiFi.softAPIP().toString().c_str(), first);
+  json_kv_str(out, "net_ap_ip6_ll", WiFi.AP.linkLocalIPv6().toString().c_str(),
+              first);
   json_kv_i(out, "net_ap_channel", wifi_ap_channel(), first);
   json_kv_u(out, "net_ap_clients", safe_ap_station_num(), first);
 

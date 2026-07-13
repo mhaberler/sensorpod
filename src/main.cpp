@@ -94,6 +94,8 @@ void startImprovSerialProvisioning() {
 }
 
 static String resolve_broker_host(const String &host) {
+  if (host.indexOf(':') >= 0) // IPv6 literal - never append .local
+    return host;
   if (host.indexOf('.') == -1)
     return host + ".local";
   return host;
@@ -182,7 +184,8 @@ void loop() {
 
   static unsigned long lastStatusPublish = 0;
   // Skip while the hosted co-processor is being flashed - WiFi.RSSI() races
-  // the RPC transport the flash uses (see wifisetup.cpp: hosted_update_in_progress).
+  // the RPC transport the flash uses (see wifisetup.cpp:
+  // hosted_update_in_progress).
   if (!hosted_update_busy() && now - lastStatusPublish > 1000) {
     lastStatusPublish = now;
     JsonDocument doc;
@@ -190,8 +193,8 @@ void loop() {
     doc["cpu_temperature"] = temperatureRead();
     doc["rssi"] = WiFi.RSSI();
     if (numClicks) {
-        doc["clicks"] = numClicks;
-        numClicks = 0;
+      doc["clicks"] = numClicks;
+      numClicks = 0;
     }
     String payload;
     serializeJson(doc, payload);
