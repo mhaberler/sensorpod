@@ -12,7 +12,7 @@ WebServer http_server(80);
 // Helper to log incoming requests
 static void log_request() {
   String client_ip = http_server.client().remoteIP().toString().c_str();
-  log_i("HTTP request from %s: %s %s", client_ip.c_str(),
+  log_w("HTTP request from %s: %s %s", client_ip.c_str(),
         http_server.method() == HTTP_GET ? "GET" :
         http_server.method() == HTTP_POST ? "POST" :
         http_server.method() == HTTP_PUT ? "PUT" :
@@ -26,6 +26,13 @@ void webserver_setup() {
     String body;
     body.reserve(4096);
     sysinfo_html(body, is_broker_mode);
+    http_server.sendHeader("Connection", "close");
+    http_server.sendHeader("Cache-Control", "no-store");
+    http_server.send(200, "text/html", body);
+  });
+    http_server.on("/", HTTP_POST,[]() {
+    log_request();
+    String body = "Hello, Sensor Logger";
     http_server.sendHeader("Connection", "close");
     http_server.sendHeader("Cache-Control", "no-store");
     http_server.send(200, "text/html", body);
