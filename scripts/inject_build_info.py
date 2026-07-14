@@ -1,5 +1,9 @@
-# C++ preprocessor macros injected by this script (all are `const char*`
-# string literals; guard with #ifdef before use):
+# C++ preprocessor macros collected by this script (all are `const char*`
+# string literals; guard with #ifdef before use). They are NOT injected as
+# CPPDEFINES (that would change every compile command line and force full
+# rebuilds); instead they are collected in env["BUILD_INFO_MACROS"] and
+# emitted into the generated header include/build_info.hpp by
+# scripts/inject_lib_versions.py, which runs after this script.
 #
 #   BUILD_SHA            always, when in a git repo — `git rev-parse --short HEAD`
 #   BUILD_DATE           always — UTC ISO-8601 build timestamp
@@ -45,8 +49,14 @@ from firmware_naming import (
 env: Any = DefaultEnvironment()
 
 
+# name -> raw string value; rendered into include/build_info.hpp by
+# inject_lib_versions.py (dict preserves insertion order)
+build_info_macros: dict[str, str] = {}
+env["BUILD_INFO_MACROS"] = build_info_macros
+
+
 def define_str(name, value):
-    env.Append(CPPDEFINES=[(name, '\\"' + value + '\\"')])
+    build_info_macros[name] = value
     print(f"inject_build_info: {name}={value}")
 
 

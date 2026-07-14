@@ -1,5 +1,9 @@
 #include <Arduino.h>
 
+#if __has_include("build_info.hpp")
+#include "build_info.hpp"
+#endif
+
 void listEnv() {
   log_i("=== Build Environment ===");
 

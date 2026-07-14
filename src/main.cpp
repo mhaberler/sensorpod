@@ -18,6 +18,10 @@
 #include <Wire.h>
 #include <optional>
 
+#if __has_include("build_info.hpp")
+#include "build_info.hpp"
+#endif
+
 // start BLE provisioning service only afeter wifi connect failed
 // p4 takes longer time to get set up
 #ifdef CONFIG_IDF_TARGET_ESP32P4

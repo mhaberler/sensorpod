@@ -153,6 +153,15 @@ C (Client discovery), G (topic prefixing), H (reboot).
 `extra_scripts` in `[env]` runs these in order — read them before touching the
 build pipeline:
 
+All injected macros land in the **generated header** `include/build_info.hpp`
+(gitignored), not in CPPDEFINES — CPPDEFINES would change every compile command
+line and force full rebuilds. `inject_build_info.py` collects into
+`env["BUILD_INFO_MACROS"]`; `inject_lib_versions.py` adds lib versions and emits
+the header, rewriting it only when non-volatile content changes (BUILD_DATE /
+BUILD_HOST are excluded from the comparison, so they reflect the last meaningful
+change, not the last build). Consumers include it via
+`#if __has_include("build_info.hpp")`.
+
 - `pre:inject_build_info.py` — defines:
   - Always: `BUILD_SHA`, `BUILD_DATE`, `BUILD_ENV`, `BUILD_BOARD`, `BUILD_TYPE`,
     `BUILD_MCU`, `BUILD_PARTITIONS`, `BUILD_FLASH_SIZE`, `BUILD_FRAMEWORK`

@@ -10,3 +10,4 @@ compile_commands.json
 .pio-mcp-workspace/
 
 .mcp.json
+include/build_info.hpp

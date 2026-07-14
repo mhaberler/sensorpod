@@ -15,6 +15,10 @@
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
 
+#if __has_include("build_info.hpp")
+#include "build_info.hpp"
+#endif
+
 #ifdef BUILD_TAG
 #define FW_VERSION BUILD_TAG
 #else
