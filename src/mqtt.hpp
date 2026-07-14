@@ -1,9 +1,9 @@
 #pragma once
 
+#include "mqtt_device.hpp"
 #include <PicoMQTT.h>
 #include <PicoWebsocket.h>
 #include <WiFi.h>
-#include "mqtt_device.hpp"
 
 class CustomMQTTServer : public PicoMQTT::Server, public MQTTDevice {
   using PicoMQTT::Server::Server;
@@ -11,26 +11,22 @@ class CustomMQTTServer : public PicoMQTT::Server, public MQTTDevice {
 public:
   int32_t client_count = 0, subscribed = 0, messages = 0;
 
-  void begin() override {
-    PicoMQTT::Server::begin();
-  }
+  void begin() override { PicoMQTT::Server::begin(); }
 
-  void loop() override {
-    PicoMQTT::Server::loop();
-  }
+  void loop() override { PicoMQTT::Server::loop(); }
 
-  bool connected() override {
-    return client_count > 0;
-  }
+  bool connected() override { return client_count > 0; }
 
-  void publish(const char* topic, const char* payload) override {
+  void publish(const char *topic, const char *payload) override {
     PicoMQTT::Server::publish(topic, payload);
   }
 
 protected:
   void on_connected(const char *client_id) override {
+    extern IPAddress mqtt_last_client_ip; // set in mqtt.cpp at accept time
     client_count++;
-    log_w("client %s connected (clients=%d)", client_id, client_count);
+    log_w("client %s connected from %s (clients=%d)", client_id,
+          mqtt_last_client_ip.toString().c_str(), client_count);
   }
   virtual void on_disconnected(const char *client_id) override {
     client_count--;
@@ -54,9 +50,9 @@ protected:
 };
 
 extern CustomMQTTServer mqtt_broker;
-extern MQTTDevice* mqtt_device;
+extern MQTTDevice *mqtt_device;
 
-inline void mqtt_publish(const char* topic, const char* payload) {
+inline void mqtt_publish(const char *topic, const char *payload) {
   extern String hostName;
   String prefixed = String(hostName) + "/" + topic;
   if (mqtt_device) {
