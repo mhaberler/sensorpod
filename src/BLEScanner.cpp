@@ -13,6 +13,7 @@
 #include <BLEAdvertisedDevice.h>
 
 #include "BTHomeDecoder.h"
+#include "decoder.h"
 
 // ---------------------------------------------------------------------------
 // Timing helper (replaces fmicro.h dependency)
@@ -100,15 +101,17 @@ struct BLEScanner::Impl {
 // Singleton storage — the Impl pointer lives on the single instance.
 static BLEScanner::Impl *s_impl = nullptr;
 
+static TheengsDecoder decoder;
+
 static bool decodeBTHome(JsonObject BLEdata, JsonDocument &json,
                          BTHomeDecoder &decoder, const char *key) {
     std::vector<uint8_t> sd;
-    if (!hexStringToVector(BLEdata["sd"], sd))
+    if (!hexStringToVector(BLEdata["servicedata"], sd))
         return false;
 
     BTHomeDecodeResult bthRes = decoder.parseBTHomeV2(
                                     std::string(sd.begin(), sd.end()),
-                                    BLEdata["mac"],
+                                    BLEdata["id"],
                                     key);
 
     if (bthRes.isBTHome && bthRes.decryptionSucceeded) {
@@ -132,62 +135,118 @@ static bool decodeBTHome(JsonObject BLEdata, JsonDocument &json,
 // BLE scan callback — enqueues raw advertisement data as MsgPack
 // ---------------------------------------------------------------------------
 class ScanCallback : public BLEAdvertisedDeviceCallbacks {
-    void onResult(BLEAdvertisedDevice advertisedDevice) override {
-        if (!s_impl || !s_impl->queue)
-            return;
+    String convertServiceData(const String &deviceServiceData) {
+        String out;
+        out.reserve(2 * deviceServiceData.length());
+        char byte[3];
+        for (size_t i = 0; i < deviceServiceData.length(); i++) {
+            snprintf(byte, sizeof(byte), "%.2x", (unsigned char)deviceServiceData[i]);
+            out += byte;
+        }
+        return out;
+    }
 
+    void onResult(BLEAdvertisedDevice advertisedDevice) override {
+        // Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
         JsonDocument doc;
         JsonObject BLEdata = doc.to<JsonObject>();
-
-        String mac = advertisedDevice.getAddress().toString();
-        mac.toUpperCase();
-        BLEdata["mac"] = (char *)mac.c_str();
-        BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
+        String mac_adress = advertisedDevice.getAddress().toString().c_str();
+        mac_adress.toUpperCase();
+        BLEdata["id"] = (char*)mac_adress.c_str();
 
         if (advertisedDevice.haveName())
-            BLEdata["name"] = (char *)advertisedDevice.getName().c_str();
+            BLEdata["name"] = (char*)advertisedDevice.getName().c_str();
 
         if (advertisedDevice.haveManufacturerData()) {
-            String hexData;
-            stringToHexString(advertisedDevice.getManufacturerData(), hexData);
-            BLEdata["mfd"] = hexData;
+            char* manufacturerdata = BLEUtils::buildHexData(NULL, (uint8_t*)advertisedDevice.getManufacturerData().c_str(), advertisedDevice.getManufacturerData().length());
+            BLEdata["manufacturerdata"] = manufacturerdata;
+            free(manufacturerdata);
         }
 
-        if (advertisedDevice.haveServiceUUID())
-            BLEdata["svcuuid"] = (char *)advertisedDevice.getServiceUUID().toString().c_str();
-
-        int sdCount = advertisedDevice.getServiceDataUUIDCount();
-        if (sdCount > 0) {
-            int idx = sdCount - 1;
-            BLEdata["svduuid"] = (char *)advertisedDevice.getServiceDataUUID(idx).toString().c_str();
-            String hexData;
-            stringToHexString(advertisedDevice.getServiceData(idx), hexData);
-            BLEdata["sd"] = hexData;
-        }
+        BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
 
         if (advertisedDevice.haveTXPower())
-            BLEdata["txpwr"] = (int8_t)advertisedDevice.getTXPower();
+            BLEdata["txpower"] = (int8_t)advertisedDevice.getTXPower();
 
+        if (advertisedDevice.haveServiceData()) {
+            int serviceDataCount = advertisedDevice.getServiceDataCount();
+            for (int j = 0; j < serviceDataCount; j++) {
+                BLEdata["servicedata"] = convertServiceData(advertisedDevice.getServiceData(j));
+                BLEdata["servicedatauuid"] =  advertisedDevice.getServiceDataUUID(j).toString();
+            }
+        }
         BLEdata["time"] = fseconds();
-
         void *ble_adv = nullptr;
         size_t total = measureMsgPack(BLEdata);
         if (s_impl->queue->send_acquire((void **)&ble_adv, total, 0) != pdTRUE) {
             s_impl->acquireFail++;
             return;
         }
-
         size_t n = serializeMsgPack(BLEdata, ble_adv, total);
         if (n != total) {
             log_e("serializeMsgPack: expected %u got %u", total, n);
         } else {
-            if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
+            if ( s_impl->queue->send_complete(ble_adv) != pdTRUE) {
                 s_impl->queueFull++;
-            } else {
-                s_impl->queue->update_high_watermark();
             }
         }
     }
+    // void onResult(BLEAdvertisedDevice advertisedDevice) override {
+    //     if (!s_impl || !s_impl->queue)
+    //         return;
+
+    //     JsonDocument doc;
+    //     JsonObject BLEdata = doc.to<JsonObject>();
+
+    //     String mac = advertisedDevice.getAddress().toString();
+    //     mac.toUpperCase();
+    //     BLEdata["mac"] = (char *)mac.c_str();
+    //     BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
+
+    //     if (advertisedDevice.haveName())
+    //         BLEdata["name"] = (char *)advertisedDevice.getName().c_str();
+
+    //     if (advertisedDevice.haveManufacturerData()) {
+    //         String hexData;
+    //         stringToHexString(advertisedDevice.getManufacturerData(), hexData);
+    //         BLEdata["mfd"] = hexData;
+    //     }
+
+    //     if (advertisedDevice.haveServiceUUID())
+    //         BLEdata["svcuuid"] = (char *)advertisedDevice.getServiceUUID().toString().c_str();
+
+    //     int sdCount = advertisedDevice.getServiceDataUUIDCount();
+    //     if (sdCount > 0) {
+    //         int idx = sdCount - 1;
+    //         BLEdata["svduuid"] = (char *)advertisedDevice.getServiceDataUUID(idx).toString().c_str();
+    //         String hexData;
+    //         stringToHexString(advertisedDevice.getServiceData(idx), hexData);
+    //         BLEdata["sd"] = hexData;
+    //     }
+
+    //     if (advertisedDevice.haveTXPower())
+    //         BLEdata["txpwr"] = (int8_t)advertisedDevice.getTXPower();
+
+    //     BLEdata["time"] = fseconds();
+
+    //     void *ble_adv = nullptr;
+    //     size_t total = measureMsgPack(BLEdata);
+    //     if (s_impl->queue->send_acquire((void **)&ble_adv, total, 0) != pdTRUE) {
+    //         s_impl->acquireFail++;
+    //         return;
+    //     }
+
+    //     size_t n = serializeMsgPack(BLEdata, ble_adv, total);
+    //     if (n != total) {
+    //         log_e("serializeMsgPack: expected %u got %u", total, n);
+    //     } else {
+    //         if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
+    //             s_impl->queueFull++;
+    //         } else {
+    //             s_impl->queue->update_high_watermark();
+    //         }
+    //     }
+    // }
 };
 
 // ---------------------------------------------------------------------------
@@ -275,13 +334,44 @@ void BLEScanner::begin(size_t ringBufSize,
     xTaskCreate(scanTask, "ble_scan", taskStackSize, _impl, taskPriority, nullptr);
 }
 
-bool BLEScanner::deliver(JsonDocument &rawDoc, JsonDocument &outDoc) {
+bool BLEScanner::deliver(JsonDocument &inDoc, JsonDocument &outDoc) {
+    auto BLEdata = inDoc.as<JsonObject>();
     bool decoded = false;
-    std::vector<uint8_t> mfd;
 
-    if (rawDoc["svduuid"].is<const char*>() &&
-            String(rawDoc["svduuid"]).indexOf("fcd2") != -1) {
-        decoded = decodeBTHome(rawDoc.as<JsonObject>(), outDoc,
+    // serializeJson(BLEdata, Serial);
+    // Serial.println();
+
+    // if (decoder.decodeBLEJson(BLEdata) > 0) {
+    //     BLEdata.remove("manufacturerdata");
+    //     BLEdata.remove("servicedata");
+    //     BLEdata.remove("servicedatauuid");
+    //     BLEdata.remove("type");
+    //     BLEdata.remove("cidc");
+    //     BLEdata.remove("acts");
+    //     BLEdata.remove("cont");
+    //     BLEdata.remove("track");
+    //     // if (BLEdata.containsKey("volt")) {
+    //     //     BLEdata["batt"] = volt2percent(BLEdata["volt"].as<float>());
+    //     // }
+    //     // std::string mac{BLEdata["id"].as<const char *>()};
+    //     // mac.erase(std::remove(mac.begin(), mac.end(), ':'), mac.end());
+    //     // std::transform(mac.begin(), mac.end(), mac.begin(),
+    //     // [](unsigned char c) {
+    //     //     return std::tolower(c);
+    //     // });
+    //     // auto publish = mqtt_publish(("ble/" + mac).c_str(), measureJson(BLEdata));
+    //     // serializeJson(BLEdata, publish);
+    //     // publish.send();
+    //     serializeJson(BLEdata, Serial);
+    //     Serial.println();
+
+    //     outDoc.set(BLEdata);
+
+    //     return true;
+    // }
+    if (BLEdata["servicedatauuid"].is<const char*>() &&
+            String(BLEdata["servicedatauuid"]).indexOf("fcd2") != -1) {
+        decoded = decodeBTHome(BLEdata, outDoc,
                                _impl->bthDecoder, _impl->bthKey);
     }
     return decoded;
@@ -297,9 +387,17 @@ bool BLEScanner::process(JsonDocument &doc, char *mac, size_t macLen) {
         return false;
 
     JsonDocument rawDoc;
-    deserializeMsgPack(rawDoc, buffer, size);
+    DeserializationError e = deserializeMsgPack(rawDoc, buffer, size);
     _impl->queue->return_item(buffer);
     _impl->received++;
+
+    if (e) {
+        log_e("deserializeMsgPack: %s", e.c_str());
+        return false;
+    }
+    // Serial.println('...in:');
+    // serializeJson(rawDoc, Serial);
+    // Serial.println();
 
     // Decode
     JsonDocument decodedDoc;
@@ -309,29 +407,29 @@ bool BLEScanner::process(JsonDocument &doc, char *mac, size_t macLen) {
 
     // Pick output document
     JsonDocument &outDoc = decoded ? decodedDoc : rawDoc;
-
+    return decoded;
     // Merge common metadata into decoded results
-    if (decoded) {
-        outDoc["mac"]  = rawDoc["mac"];
-        outDoc["time"] = rawDoc["time"];
-        outDoc["rssi"] = rawDoc["rssi"];
-        if (rawDoc["name"].is<const char*>())
-            outDoc["name"] = rawDoc["name"];
-        if (rawDoc["txpwr"].is<JsonVariant>())
-            outDoc["txpwr"] = rawDoc["txpwr"];
+    // if (decoded) {
+    //     outDoc["mac"]  = rawDoc["mac"];
+    //     outDoc["time"] = rawDoc["time"];
+    //     outDoc["rssi"] = rawDoc["rssi"];
+    //     if (rawDoc["name"].is<const char*>())
+    //         outDoc["name"] = rawDoc["name"];
+    //     if (rawDoc["txpwr"].is<JsonVariant>())
+    //         outDoc["txpwr"] = rawDoc["txpwr"];
 
-        // Extract MAC (strip colons)
-        String macStr = rawDoc["mac"].as<String>();
-        macStr.replace(":", "");
-        size_t copyLen = macStr.length();
-        if (copyLen >= macLen)
-            copyLen = macLen - 1;
-        memcpy(mac, macStr.c_str(), copyLen);
-        mac[copyLen] = '\0';
+    //     // Extract MAC (strip colons)
+    //     String macStr = rawDoc["mac"].as<String>();
+    //     macStr.replace(":", "");
+    //     size_t copyLen = macStr.length();
+    //     if (copyLen >= macLen)
+    //         copyLen = macLen - 1;
+    //     memcpy(mac, macStr.c_str(), copyLen);
+    //     mac[copyLen] = '\0';
 
-        // Move result into caller's doc
-        doc.set(outDoc);
-        return true;
-    }
+    //     // Move result into caller's doc
+    //     doc.set(outDoc);
+    //     return true;
+    // }
     return false;
 }

@@ -37,7 +37,7 @@ void bthome_loop() {
     char mac[16];
     if (bleScanner.process(doc, mac, sizeof(mac))) {
         String payload;
-        // serializeJsonPretty(doc, Serial);
+        serializeJsonPretty(doc, Serial);
         serializeJson(doc, payload);
         mqtt_publish(mac, payload.c_str());
     }

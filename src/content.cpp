@@ -428,7 +428,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
   bool first = true;
   out += '{';
-  json_kv_str(out, "hostName.c_str()", hostName.c_str(), first);
+  json_kv_str(out, "hostname", hostName.c_str(), first);
   json_kv_str(out, "fw_version", FW_VERSION, first);
   json_kv_str(out, "build_sha", BUILD_SHA, first);
   json_kv_str(out, "build_date", BUILD_DATE, first);
