@@ -257,65 +257,6 @@ class ScanCallback : public BLEAdvertisedDeviceCallbacks {
       }
     }
   }
-  // void onResult(BLEAdvertisedDevice advertisedDevice) override {
-  //     if (!s_impl || !s_impl->queue)
-  //         return;
-
-  //     JsonDocument doc;
-  //     JsonObject BLEdata = doc.to<JsonObject>();
-
-  //     String mac = advertisedDevice.getAddress().toString();
-  //     mac.toUpperCase();
-  //     BLEdata["mac"] = (char *)mac.c_str();
-  //     BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
-
-  //     if (advertisedDevice.haveName())
-  //         BLEdata["name"] = (char *)advertisedDevice.getName().c_str();
-
-  //     if (advertisedDevice.haveManufacturerData()) {
-  //         String hexData;
-  //         stringToHexString(advertisedDevice.getManufacturerData(), hexData);
-  //         BLEdata["mfd"] = hexData;
-  //     }
-
-  //     if (advertisedDevice.haveServiceUUID())
-  //         BLEdata["svcuuid"] = (char
-  //         *)advertisedDevice.getServiceUUID().toString().c_str();
-
-  //     int sdCount = advertisedDevice.getServiceDataUUIDCount();
-  //     if (sdCount > 0) {
-  //         int idx = sdCount - 1;
-  //         BLEdata["svduuid"] = (char
-  //         *)advertisedDevice.getServiceDataUUID(idx).toString().c_str();
-  //         String hexData;
-  //         stringToHexString(advertisedDevice.getServiceData(idx), hexData);
-  //         BLEdata["sd"] = hexData;
-  //     }
-
-  //     if (advertisedDevice.haveTXPower())
-  //         BLEdata["txpwr"] = (int8_t)advertisedDevice.getTXPower();
-
-  //     BLEdata["time"] = fseconds();
-
-  //     void *ble_adv = nullptr;
-  //     size_t total = measureMsgPack(BLEdata);
-  //     if (s_impl->queue->send_acquire((void **)&ble_adv, total, 0) != pdTRUE)
-  //     {
-  //         s_impl->acquireFail++;
-  //         return;
-  //     }
-
-  //     size_t n = serializeMsgPack(BLEdata, ble_adv, total);
-  //     if (n != total) {
-  //         log_e("serializeMsgPack: expected %u got %u", total, n);
-  //     } else {
-  //         if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
-  //             s_impl->queueFull++;
-  //         } else {
-  //             s_impl->queue->update_high_watermark();
-  //         }
-  //     }
-  // }
 };
 
 // ---------------------------------------------------------------------------

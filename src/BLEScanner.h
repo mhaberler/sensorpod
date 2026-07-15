@@ -1,18 +1,22 @@
 /// @file BLEScanner.h
-/// @brief Singleton BLE advertisement scanner with built-in device decoders.
+/// @brief Singleton BLE advertisement scanner with runtime-selectable
+/// decoders.
 ///
 /// Scans for BLE advertisements in a dedicated FreeRTOS task and queues raw
-/// data via a ring buffer. The caller drains the queue from the main loop by
-/// calling process(), which deserializes, decodes (if a known device type is
-/// recognized), and returns a populated JsonDocument plus the device MAC.
+/// data via a ring buffer. Optional dedup (ble_dedup_enabled/ble_dedup_age)
+/// drops repeated identical raw payloads per MAC before enqueueing; the map
+/// and its age-out sweep live on the scan task. The caller drains the queue
+/// from the main loop by calling process(), which deserializes, decodes, and
+/// returns a populated JsonDocument plus the device MAC.
 ///
-/// Supported device decoders:
-///   - Ruuvi Tag (V5 format)
-///   - Mopeka tank level sensors
-///   - TPMS tire pressure sensors (0x0100 and 0x00AC variants)
-///   - Otodata tank monitors
-///   - Rotarex ELG level gauges
-///   - BTHome v2 (with optional AES decryption)
+/// The decode pipeline is selected at runtime via ble_decoder_mode
+/// (deviceconfig.hpp, NVS-persisted, live-updated from the web UI):
+///   - BLE_DECODER_THEENGS: TheengsDecoder device library
+///   - BLE_DECODER_BTHOME:  BTHome v2 (optional AES key via setBTHomeKey())
+///   - BLE_DECODER_CUSTOM:  custom_decoder.cpp (Mikrotik TG-BT5, Qingping)
+///   - BLE_DECODER_NONE:    no decoding, everything returned raw
+/// Undecoded advertisements are returned raw when ble_retain_undecoded is
+/// set (or in NONE mode), otherwise dropped.
 ///
 /// Usage:
 /// @code
@@ -56,9 +60,12 @@ public:
                UBaseType_t taskPriority = 1,
                UBaseType_t ringBufCap = MALLOC_CAP_DEFAULT);
 
-    /// Drain one item from the ring buffer, decode and populate doc.
-    /// mac is filled with the colon-stripped uppercase MAC (e.g. "AABBCCDDEEFF").
-    /// Returns true if an item was processed, false if queue was empty.
+    /// Drain one item from the ring buffer, decode per ble_decoder_mode and
+    /// populate doc (decoded result, or raw advertisement in NONE mode /
+    /// when ble_retain_undecoded is set).
+    /// mac is filled with the colon-stripped lowercase MAC (e.g. "aabbccddeeff").
+    /// Returns true if doc was populated, false if the queue was empty or
+    /// the advertisement was dropped (undecoded, retain off).
     bool process(JsonDocument &doc, char *mac, size_t macLen);
 
     /// Set BTHome decryption key (32-char hex string). Empty disables decryption.

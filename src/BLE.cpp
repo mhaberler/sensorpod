@@ -1,8 +1,7 @@
 /**
- * BTHomeScan — example sketch for the BTHomeDecoder library.
- *
- * Scans for BLE advertisements on an ESP32, decodes any BTHome v2
- * payloads, and prints them as pretty-printed JSON on Serial.
+ * BLE scanner glue — starts the BLEScanner singleton and drains its queue
+ * from the main loop, publishing results to MQTT as ble/<mac>.
+ * Decoder selection and undecoded/dedup handling live in BLEScanner.cpp.
  */
 
 #include "mqtt.hpp"
@@ -18,7 +17,7 @@
 
 static auto &bleScanner = BLEScanner::instance();
 
-void bthome_setup() {
+void blescanner_setup() {
 
   // Optional: set a BTHome decryption key (32-char hex string)
   // bleScanner.setBTHomeKey("00112233445566778899aabbccddeeff");
@@ -32,7 +31,7 @@ void bthome_setup() {
                    RBMEM); // ring buffer memory capability
 }
 
-void bthome_loop() {
+void blescanner_loop() {
   JsonDocument doc;
   char mac[16];
   if (bleScanner.process(doc, mac, sizeof(mac))) {
@@ -43,5 +42,4 @@ void bthome_loop() {
     topic += mac;
     mqtt_publish(topic.c_str(), payload.c_str());
   }
-  delay(10);
 }

@@ -62,8 +62,8 @@ void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
 uint8_t safe_ap_station_num();
 bool hosted_update_busy();
-void bthome_setup();
-void bthome_loop();
+void blescanner_setup();
+void blescanner_loop();
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
 bool lox_init(TwoWire &wire);
@@ -162,7 +162,7 @@ void setup() {
   lox_present = lox_init(Wire);
   wifi_setup();
   if (ble_scan_enabled)
-    bthome_setup();
+    blescanner_setup();
 
   // Initialize MQTT device based on role
   if (is_broker_mode) {
@@ -192,7 +192,7 @@ void loop() {
   unsigned long now = millis();
   button_loop();
   if (ble_scan_enabled)
-    bthome_loop();
+    blescanner_loop();
 #if defined(HAS_M5UNIFIED)
   M5.update();
 #endif

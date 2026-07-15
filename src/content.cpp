@@ -175,7 +175,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 
     out += "<p><strong>Decoder:</strong> (applied immediately)</p>";
     static const char *decoder_labels[] = {"Theengs decoder",
-                                           "BTHomeV2 decoder", "Custom decoder",
+                                           "BTHomeV2 decoder", "Custom decoder examples (Mikrotik and Qingping)",
                                            "Undecoded advertisements"};
     for (int i = 0; i < 4; i++) {
       appendf(out,
