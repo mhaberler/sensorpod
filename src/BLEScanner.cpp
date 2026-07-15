@@ -99,7 +99,10 @@ struct BLEScanner::Impl {
   uint32_t queueFull = 0;
   uint32_t acquireFail = 0;
   uint32_t received = 0;
-  uint32_t decoded = 0;
+  uint32_t decodedTheengs = 0;
+  uint32_t decodedBTHome = 0;
+  uint32_t decodedCustom = 0;
+  uint32_t rawAds = 0;
 };
 
 // Singleton storage — the Impl pointer lives on the single instance.
@@ -316,8 +319,25 @@ BLEScanner::Stats BLEScanner::stats() const {
   s.queueFull = _impl->queueFull;
   s.acquireFail = _impl->acquireFail;
   s.received = _impl->received;
-  s.decoded = _impl->decoded;
+  s.decodedTheengs = _impl->decodedTheengs;
+  s.decodedBTHome = _impl->decodedBTHome;
+  s.decodedCustom = _impl->decodedCustom;
+  s.rawAds = _impl->rawAds;
   return s;
+}
+
+void BLEScanner::clearStats() {
+  if (!_impl)
+    return;
+  _impl->queueFull = 0;
+  _impl->acquireFail = 0;
+  _impl->received = 0;
+  _impl->decodedTheengs = 0;
+  _impl->decodedBTHome = 0;
+  _impl->decodedCustom = 0;
+  _impl->rawAds = 0;
+  if (_impl->queue)
+    _impl->queue->reset_high_watermark();
 }
 
 void BLEScanner::begin(size_t ringBufSize, uint32_t scanTimeMs,
@@ -359,19 +379,26 @@ bool BLEScanner::deliver(JsonDocument &inDoc, JsonDocument &outDoc) {
       BLEdata.remove("cont");
       BLEdata.remove("track");
       outDoc.set(BLEdata);
+      _impl->decodedTheengs++;
       return true;
     }
     return false;
 
   case DeviceConfig::BLE_DECODER_BTHOME:
     if (BLEdata["servicedatauuid"].is<const char *>() &&
-        String(BLEdata["servicedatauuid"]).indexOf("fcd2") != -1) {
-      return decodeBTHome(BLEdata, outDoc, _impl->bthDecoder, _impl->bthKey);
+        String(BLEdata["servicedatauuid"]).indexOf("fcd2") != -1 &&
+        decodeBTHome(BLEdata, outDoc, _impl->bthDecoder, _impl->bthKey)) {
+      _impl->decodedBTHome++;
+      return true;
     }
     return false;
 
   case DeviceConfig::BLE_DECODER_CUSTOM:
-    return custom_decode(BLEdata, outDoc);
+    if (custom_decode(BLEdata, outDoc)) {
+      _impl->decodedCustom++;
+      return true;
+    }
+    return false;
 
   default: // BLE_DECODER_NONE — raw only, no decode
     return false;
@@ -409,8 +436,8 @@ bool BLEScanner::process(JsonDocument &doc, char *mac, size_t macLen) {
   bool decoded = false;
   if (mode != DeviceConfig::BLE_DECODER_NONE)
     decoded = deliver(rawDoc, decodedDoc);
-  if (decoded)
-    _impl->decoded++;
+  if (!decoded)
+    _impl->rawAds++;
 
   // Undecoded: publish raw in NONE mode or when retain is on, else drop
   if (!decoded && mode != DeviceConfig::BLE_DECODER_NONE &&

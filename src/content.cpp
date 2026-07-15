@@ -6,6 +6,7 @@
 #include <esp_partition.h>
 #include <stdarg.h>
 
+#include "BLEScanner.h"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
@@ -174,9 +175,10 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             ble_scan ? 0 : 1, ble_scan ? "Disable" : "Enable");
 
     out += "<p><strong>Decoder:</strong> (applied immediately)</p>";
-    static const char *decoder_labels[] = {"Theengs decoder",
-                                           "BTHomeV2 decoder", "Custom decoder examples (Mikrotik and Qingping)",
-                                           "Undecoded advertisements"};
+    static const char *decoder_labels[] = {
+        "Theengs decoder", "BTHomeV2 decoder",
+        "Custom decoder examples (Mikrotik and Qingping)",
+        "Undecoded advertisements"};
     for (int i = 0; i < 4; i++) {
       appendf(out,
               "<label><input type='radio' name='bleDecoder' value='%d'%s "
@@ -319,6 +321,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "'+d.error);return;}"
       "alert('Saved & applied')})"
       ".catch(e=>alert('Error: '+e))}"
+      "function clearBleStats(){"
+      "fetch('/api/"
+      "clear-ble-stats',{method:'POST'})"
+      ".then(r=>r.json()).then(d=>{location.reload()})"
+      ".catch(e=>alert('Error: '+e))}"
       "window.addEventListener('load',loadBrokers);"
       "</script></div>";
 
@@ -353,6 +360,23 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     out += "</ul>";
   }
   out += "</li></ul>";
+
+  {
+    BLEScanner::Stats bs = BLEScanner::instance().stats();
+    out += "<h3>BLE</h3><ul>";
+    appendf(out, "<li>Advertisements received: %u</li>", bs.received);
+    appendf(out, "<li>Decoded (Theengs): %u</li>", bs.decodedTheengs);
+    appendf(out, "<li>Decoded (BTHomeV2): %u</li>", bs.decodedBTHome);
+    appendf(out, "<li>Decoded (custom): %u</li>", bs.decodedCustom);
+    appendf(out, "<li>Raw (undecoded): %u</li>", bs.rawAds);
+    appendf(out, "<li>Queue HWM: %u/%u (%u%%)</li>", (unsigned)bs.hwmBytes,
+            (unsigned)bs.totalBytes, bs.hwmPercent);
+    appendf(out, "<li>Queue full: %u, acquire failed: %u</li>", bs.queueFull,
+            bs.acquireFail);
+    out += "</ul>";
+    out += "<button type='button' class='config-btn' "
+           "onclick='clearBleStats()'>Clear BLE stats</button>";
+  }
 
   out += "<h3>MQTT</h3><ul>";
   if (is_broker_mode) {

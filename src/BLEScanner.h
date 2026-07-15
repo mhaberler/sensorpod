@@ -42,57 +42,60 @@
 
 class BLEScanner {
 public:
-    static BLEScanner &instance();
+  static BLEScanner &instance();
 
-    BLEScanner(const BLEScanner &) = delete;
-    BLEScanner &operator=(const BLEScanner &) = delete;
+  BLEScanner(const BLEScanner &) = delete;
+  BLEScanner &operator=(const BLEScanner &) = delete;
 
-    /// Opaque implementation detail (defined in BLEScanner.cpp)
-    struct Impl;
+  /// Opaque implementation detail (defined in BLEScanner.cpp)
+  struct Impl;
 
-    /// Initialize and start the BLE scanning RTOS task.
-    /// Idempotent — second call is a no-op.
-    void begin(size_t ringBufSize = 2048,
-               uint32_t scanTimeMs = 15000,
-               uint16_t scanInterval = 100,
-               uint16_t scanWindow = 99,
-               uint32_t taskStackSize = 4096,
-               UBaseType_t taskPriority = 1,
-               UBaseType_t ringBufCap = MALLOC_CAP_DEFAULT);
+  /// Initialize and start the BLE scanning RTOS task.
+  /// Idempotent — second call is a no-op.
+  void begin(size_t ringBufSize = 2048, uint32_t scanTimeMs = 15000,
+             uint16_t scanInterval = 100, uint16_t scanWindow = 99,
+             uint32_t taskStackSize = 4096, UBaseType_t taskPriority = 1,
+             UBaseType_t ringBufCap = MALLOC_CAP_DEFAULT);
 
-    /// Drain one item from the ring buffer, decode per ble_decoder_mode and
-    /// populate doc (decoded result, or raw advertisement in NONE mode /
-    /// when ble_retain_undecoded is set).
-    /// mac is filled with the colon-stripped lowercase MAC (e.g. "aabbccddeeff").
-    /// Returns true if doc was populated, false if the queue was empty or
-    /// the advertisement was dropped (undecoded, retain off).
-    bool process(JsonDocument &doc, char *mac, size_t macLen);
+  /// Drain one item from the ring buffer, decode per ble_decoder_mode and
+  /// populate doc (decoded result, or raw advertisement in NONE mode /
+  /// when ble_retain_undecoded is set).
+  /// mac is filled with the colon-stripped lowercase MAC (e.g. "aabbccddeeff").
+  /// Returns true if doc was populated, false if the queue was empty or
+  /// the advertisement was dropped (undecoded, retain off).
+  bool process(JsonDocument &doc, char *mac, size_t macLen);
 
-    /// Set BTHome decryption key (32-char hex string). Empty disables decryption.
-    void setBTHomeKey(const char *hexKey);
+  /// Set BTHome decryption key (32-char hex string). Empty disables decryption.
+  void setBTHomeKey(const char *hexKey);
 
-    /// Enable or disable active scanning. Call before begin().
-    void setActiveScan(bool active);
+  /// Enable or disable active scanning. Call before begin().
+  void setActiveScan(bool active);
 
-    /// Ring buffer and queue statistics.
-    struct Stats {
-        size_t hwmBytes;      ///< High water mark (peak bytes used)
-        size_t totalBytes;    ///< Ring buffer total capacity
-        uint8_t hwmPercent;   ///< High water mark as percentage of total
-        uint32_t queueFull;   ///< Times send_complete failed (queue full)
-        uint32_t acquireFail; ///< Times send_acquire failed (no space)
-        uint32_t received;    ///< Total messages dequeued
-        uint32_t decoded;     ///< Messages matched by a decoder
-    };
+  /// Ring buffer and queue statistics.
+  struct Stats {
+    size_t hwmBytes;         ///< High water mark (peak bytes used)
+    size_t totalBytes;       ///< Ring buffer total capacity
+    uint8_t hwmPercent;      ///< High water mark as percentage of total
+    uint32_t queueFull;      ///< Times send_complete failed (queue full)
+    uint32_t acquireFail;    ///< Times send_acquire failed (no space)
+    uint32_t received;       ///< Total messages dequeued
+    uint32_t decodedTheengs; ///< Decoded by the Theengs decoder
+    uint32_t decodedBTHome;  ///< Decoded as BTHome v2
+    uint32_t decodedCustom;  ///< Decoded by the custom decoder
+    uint32_t rawAds;         ///< Advertisements no decoder claimed
+  };
 
-    /// Return current ring buffer statistics.
-    Stats stats() const;
+  /// Return current ring buffer statistics.
+  Stats stats() const;
+
+  /// Reset all counters (and the ring buffer high-water mark) to zero.
+  void clearStats();
 
 private:
-    BLEScanner() = default;
+  BLEScanner() = default;
 
-    Impl *_impl = nullptr;
-    bool _started = false;
+  Impl *_impl = nullptr;
+  bool _started = false;
 
-    bool deliver(JsonDocument &rawDoc, JsonDocument &outDoc);
+  bool deliver(JsonDocument &rawDoc, JsonDocument &outDoc);
 };

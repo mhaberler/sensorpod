@@ -1,3 +1,4 @@
+#include "BLEScanner.h"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
@@ -192,6 +193,13 @@ void webserver_setup() {
     ble_dedup_enabled = on;
     http_server.send(200, "application/json",
                      "{\"status\":\"saved\",\"applied\":true}");
+  });
+
+  // Reset BLE statistics counters
+  http_server.on("/api/clear-ble-stats", HTTP_POST, []() {
+    log_request();
+    BLEScanner::instance().clearStats();
+    http_server.send(200, "application/json", "{\"status\":\"cleared\"}");
   });
 
   // WiFi credentials endpoint (empty ssid = clear)

@@ -22,7 +22,7 @@ void blescanner_setup() {
   // Optional: set a BTHome decryption key (32-char hex string)
   // bleScanner.setBTHomeKey("00112233445566778899aabbccddeeff");
 
-  bleScanner.begin(4096,   // ring buffer size
+  bleScanner.begin(32768,   // ring buffer size
                    1000,   // scan time (ms)
                    100,    // scan interval
                    99,     // scan window
