@@ -1,5 +1,6 @@
 #pragma once
 
+#include "logging.hpp"
 #include "mqtt_device.hpp"
 #include <PicoMQTT.h>
 #include <PicoWebsocket.h>

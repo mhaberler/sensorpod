@@ -1,5 +1,6 @@
 #include "BLEScanner.h"
 
+#include "logging.hpp"
 #include <Arduino.h>
 #include <map>
 #include <string>

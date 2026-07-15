@@ -8,6 +8,7 @@
 #include "deviceconfig.hpp"
 #include "led.hpp"
 #include "listenv.hpp"
+#include "logging.hpp"
 #include "mqtt_device.hpp"
 #include <ArduinoJson.h>
 #include <ImprovWiFiBLE.h>
@@ -131,6 +132,7 @@ void setup() {
   while (!Serial && millis() - serial_t0 < 1500) {
     delay(10);
   }
+  logging_setup();
   listEnv();
   hostName = WiFi.getHostname();
   hostName.toLowerCase();
@@ -274,6 +276,7 @@ void loop() {
   ledLoop();
 
   wifi_loop();
+  logging_loop();
   yield();
 }
 

@@ -1,4 +1,5 @@
 #include "mdns_client.hpp"
+#include "logging.hpp"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 

@@ -1,6 +1,7 @@
 #ifdef OTA_WEB_UPDATER
 
 #include "http_server.hpp"
+#include "logging.hpp"
 #include <Arduino.h>
 #include <Update.h>
 #include <WebServer.h>

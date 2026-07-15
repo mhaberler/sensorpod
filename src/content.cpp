@@ -10,6 +10,7 @@
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
+#include "logging.hpp"
 #include "mdns.h"
 #include "mdns_client.hpp"
 #include "mdns_state.hpp"
@@ -111,6 +112,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   const esp_partition_t *running = esp_ota_get_running_partition();
   const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
+  const uint8_t log_level = logging_current_level();
+  const char *log_level_str = logging_level_name(log_level);
 
   out += "<!DOCTYPE HTML><html><head><meta charset='utf-8'>";
   appendf(out, "<title>%s</title>", hostName.c_str());
@@ -129,6 +132,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 #ifdef OTA_WEB_UPDATER
   out += "<a href='/update'>Firmware update</a> | ";
 #endif
+  out += "<a href='/webserial' target='_blank'>WebSerial</a> | ";
   out += "<a href='/data'>JSON</a></p>";
 
   // Device Configuration Section
@@ -157,6 +161,20 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   out += "<p><small>Disabling modem-sleep keeps mDNS discovery alive on a "
          "phone hotspot; costs more idle current. Applied immediately, no "
          "reboot.</small></p></form>";
+
+  out += "<form id='logLevelForm'><p><strong>Log level:</strong> ";
+  out += "<select id='logLevel'>";
+  static const char *level_opts[] = {"none", "error", "warn",
+                                     "info", "debug", "verbose"};
+  for (const char *opt : level_opts) {
+    appendf(out, "<option value='%s'%s>%s</option>", opt,
+            strcmp(opt, log_level_str) == 0 ? " selected" : "", opt);
+  }
+  out += "</select> ";
+  out += "<button type='button' class='config-btn' "
+         "onclick='saveLogLevel()'>Apply</button></p>";
+  out += "<p><small>Applied immediately and saved to NVS. Also set via "
+         "WebSerial/USB: <code>level debug</code>.</small></p></form>";
 
   // BLE options
   {
@@ -294,6 +312,15 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "'+d.error);return;}"
       "alert('Saved & applied');location.reload();})"
       ".catch(e=>alert('Error: '+e))}"
+      "function saveLogLevel(){"
+      "var l=document.getElementById('logLevel').value;"
+      "fetch('/api/"
+      "set-log-level',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:'level='+encodeURIComponent(l)"
+      "})"
+      ".then(r=>r.json()).then(d=>{if(d.error){alert('Error: "
+      "'+d.error);return;}"
+      "alert('Log level saved & applied')}).catch(e=>alert('Error: '+e))}"
       "function saveBleScan(e){"
       "fetch('/api/"
       "set-ble-scan',{method:'POST',headers:{'Content-Type':"
@@ -530,6 +557,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   const esp_partition_t *running = esp_ota_get_running_partition();
   const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
+  const char *log_level_str = logging_level_name(logging_current_level());
   bool first = true;
   out += '{';
   json_kv_str(out, "hostname", hostName.c_str(), first);
@@ -579,6 +607,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_u(out, "uptime_s", millis() / 1000, first);
   json_kv_u(out, "broker_mode", is_broker_mode ? 1 : 0, first);
   json_kv_u(out, "wifi_sleep", wifi_sleep ? 1 : 0, first);
+  json_kv_str(out, "log_level", log_level_str, first);
   json_kv_u(out, "ble_scan", DeviceConfig::isBleScanEnabled() ? 1 : 0, first);
   json_kv_u(out, "ble_decoder", DeviceConfig::getBleDecoder(), first);
   json_kv_u(out, "ble_retain", DeviceConfig::isBleRetainUndecoded() ? 1 : 0,

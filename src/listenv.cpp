@@ -1,3 +1,4 @@
+#include "logging.hpp"
 #include <Arduino.h>
 
 #if __has_include("build_info.hpp")

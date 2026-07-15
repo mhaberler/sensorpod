@@ -1,5 +1,6 @@
 #pragma once
 
+#include "logging.hpp"
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -176,6 +177,35 @@ public:
       return false;
     }
     log_i("Device config: wifi_sleep = %s", enabled ? "on" : "off");
+    return true;
+  }
+
+  static uint8_t getLogLevel() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return ARDUHAL_LOG_LEVEL_INFO;
+    uint8_t level = prefs.getUChar("log_level", ARDUHAL_LOG_LEVEL_INFO);
+    prefs.end();
+    if (level > ARDUHAL_LOG_LEVEL_VERBOSE)
+      return ARDUHAL_LOG_LEVEL_INFO;
+    return level;
+  }
+
+  static bool setLogLevel(uint8_t level) {
+    if (level > ARDUHAL_LOG_LEVEL_VERBOSE)
+      return false;
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for log_level");
+      return false;
+    }
+    size_t n = prefs.putUChar("log_level", level);
+    prefs.end();
+    if (n == 0) {
+      log_e("Device config: failed to save log_level");
+      return false;
+    }
+    log_i("Device config: log_level = %u", (unsigned)level);
     return true;
   }
 };

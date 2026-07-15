@@ -1,4 +1,5 @@
 #include "mqtt_client.hpp"
+#include "logging.hpp"
 #include <WiFi.h>
 
 MQTTClient mqtt_client;

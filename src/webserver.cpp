@@ -2,6 +2,7 @@
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
+#include "logging.hpp"
 #include <WebServer.h>
 #include <WiFi.h>
 
@@ -223,6 +224,25 @@ void webserver_setup() {
     ESP.restart();
   });
 
+  // Log level (live apply, persisted to NVS — no reboot)
+  http_server.on("/api/set-log-level", HTTP_POST, []() {
+    log_request();
+    if (!http_server.hasArg("level")) {
+      http_server.send(400, "application/json",
+                       "{\"error\":\"missing level parameter\"}");
+      return;
+    }
+    String name = http_server.arg("level");
+    name.toLowerCase();
+    if (!logging_apply_level_name(name.c_str())) {
+      http_server.send(400, "application/json",
+                       "{\"error\":\"invalid level or save failed\"}");
+      return;
+    }
+    http_server.send(200, "application/json",
+                     "{\"status\":\"saved\",\"applied\":true}");
+  });
+
   // Reboot endpoint
   http_server.on("/api/reboot", HTTP_POST, []() {
     log_request();
@@ -241,6 +261,7 @@ void webserver_setup() {
   ota_setup(http_server);
 #endif
   http_server.begin();
+  logging_begin(http_server);
 }
 
 void webserver_loop() { http_server.handleClient(); }

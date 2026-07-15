@@ -170,6 +170,8 @@ Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on p
 
 The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table, network state, BLE statistics, and announced mDNS services. `GET /data` returns the same as JSON.
 
+Log output goes to USB Serial and a browser console at `/webserial` (link on the sysinfo page). Runtime log level (none/error/warn/info/debug/verbose) is set on the sysinfo page or by typing `level debug` in WebSerial/USB; the setting is stored in NVS and applied immediately (no reboot).
+
 ## WiFi provisioning
 
 SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol. If serial provisioning doesn't complete within `TIME_TO_CONNECT` (15s on P4, 8s elsewhere), the firmware also falls back to Improv **BLE** provisioning (enabled via the `-DIMPROV_WIFI_BLE_ENABLED` flag in the `[improv]` block). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
