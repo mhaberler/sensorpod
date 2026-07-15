@@ -83,6 +83,7 @@ public:
     uint32_t decodedBTHome;  ///< Decoded as BTHome v2
     uint32_t decodedCustom;  ///< Decoded by the custom decoder
     uint32_t rawAds;         ///< Advertisements no decoder claimed
+    uint32_t dedupDrops;     ///< Advertisements dropped by dedup
   };
 
   /// Return current ring buffer statistics.

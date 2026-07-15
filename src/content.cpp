@@ -182,24 +182,27 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     for (int i = 0; i < 4; i++) {
       appendf(out,
               "<label><input type='radio' name='bleDecoder' value='%d'%s "
-              "onclick='saveBleDecoder(%d)'> %s</label><br>",
-              i, i == ble_decoder ? " checked" : "", i, decoder_labels[i]);
+              "onclick='saveBleDecoder(%d)'> ",
+              i, i == ble_decoder ? " checked" : "", i);
+      out += decoder_labels[i];
+      out += "</label><br>";
     }
 
     appendf(out,
             "<p><label><input type='checkbox' id='bleRetain'%s "
-            "onclick='saveBleRetain(this.checked)'> Retain undecoded "
-            "advertisements (publish raw)</label></p>",
+            "onclick='saveBleRetain(this.checked)'> ",
             ble_retain ? " checked" : "");
+    out += "Retain undecoded advertisements (publish raw)</label></p>";
 
+    appendf(out, "<p><label><input type='checkbox' id='bleDedup'%s> ",
+            ble_dedup ? " checked" : "");
+    out += "Deduplicate advertisements</label> ";
     appendf(out,
-            "<p><label><input type='checkbox' id='bleDedup'%s> Deduplicate "
-            "advertisements</label> "
             "<label>max age <input type='number' id='bleDedupAge' value='%u' "
-            "min='1' style='width:4em'> s</label> "
-            "<button type='button' class='config-btn' "
-            "onclick='saveBleDedup()'>Apply</button></p>",
-            ble_dedup ? " checked" : "", (unsigned)ble_age);
+            "min='1' style='width:4em'> s</label> ",
+            (unsigned)ble_age);
+    out += "<button type='button' class='config-btn' "
+           "onclick='saveBleDedup()'>Apply</button></p>";
     out += "</form>";
   }
 
@@ -369,6 +372,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<li>Decoded (BTHomeV2): %u</li>", bs.decodedBTHome);
     appendf(out, "<li>Decoded (custom): %u</li>", bs.decodedCustom);
     appendf(out, "<li>Raw (undecoded): %u</li>", bs.rawAds);
+    appendf(out, "<li>Dedup drops: %u</li>", bs.dedupDrops);
     appendf(out, "<li>Queue HWM: %u/%u (%u%%)</li>", (unsigned)bs.hwmBytes,
             (unsigned)bs.totalBytes, bs.hwmPercent);
     appendf(out, "<li>Queue full: %u, acquire failed: %u</li>", bs.queueFull,

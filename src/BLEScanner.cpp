@@ -103,6 +103,7 @@ struct BLEScanner::Impl {
   uint32_t decodedBTHome = 0;
   uint32_t decodedCustom = 0;
   uint32_t rawAds = 0;
+  uint32_t dedupDrops = 0;
 };
 
 // Singleton storage — the Impl pointer lives on the single instance.
@@ -212,8 +213,11 @@ class ScanCallback : public BLEAdvertisedDeviceCallbacks {
     mac_adress.toLowerCase();
 
     if (dedupDrop(mac_adress.c_str(), advertisedDevice.getPayload(),
-                  advertisedDevice.getPayloadLength()))
+                  advertisedDevice.getPayloadLength())) {
+      if (s_impl)
+        s_impl->dedupDrops++;
       return;
+    }
 
     JsonDocument doc;
     JsonObject BLEdata = doc.to<JsonObject>();
@@ -247,7 +251,7 @@ class ScanCallback : public BLEAdvertisedDeviceCallbacks {
     BLEdata["time"] = fseconds();
     void *ble_adv = nullptr;
     size_t total = measureMsgPack(BLEdata);
-    if (s_impl->queue->send_acquire((void **)&ble_adv, total, 0) != pdTRUE) {
+    if (s_impl->queue->send_acquire((void **)&ble_adv, total, 1) != pdTRUE) {
       s_impl->acquireFail++;
       return;
     }
@@ -278,7 +282,7 @@ static void scanTask(void *param) {
   while (true) {
     BLEScanResults *foundDevices =
         impl->pBLEScan->start(impl->scanTimeMs / 1000, false);
-    log_i("Devices found: %d", foundDevices->getCount());
+    // log_i("Devices found: %d", foundDevices->getCount());
     impl->pBLEScan->clearResults();
     delay(1);
   }
@@ -323,6 +327,7 @@ BLEScanner::Stats BLEScanner::stats() const {
   s.decodedBTHome = _impl->decodedBTHome;
   s.decodedCustom = _impl->decodedCustom;
   s.rawAds = _impl->rawAds;
+  s.dedupDrops = _impl->dedupDrops;
   return s;
 }
 
@@ -336,6 +341,7 @@ void BLEScanner::clearStats() {
   _impl->decodedBTHome = 0;
   _impl->decodedCustom = 0;
   _impl->rawAds = 0;
+  _impl->dedupDrops = 0;
   if (_impl->queue)
     _impl->queue->reset_high_watermark();
 }
