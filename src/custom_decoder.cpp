@@ -1,5 +1,6 @@
-/// Custom BLE advertisement decoder — Mikrotik TG-BT5 tags.
-/// Ported from tab5-lvgl9.4 BLEScanner.cpp decodeMikrotik.
+/// Custom BLE advertisement decoder — Mikrotik TG-BT5 tags and Qingping
+/// sensors. Ported from tab5-lvgl9.4 BLEScanner.cpp decodeMikrotik and
+/// sensor-ble devices/qingping.js.
 
 #include "custom_decoder.hpp"
 
@@ -130,7 +131,103 @@ static bool decodeMikrotik(const std::vector<uint8_t> &data,
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Qingping sensors (service data UUID 0xFDCD), TLV records from offset 8
+// ---------------------------------------------------------------------------
+static const char *qingpingDeviceType(uint8_t id) {
+  switch (id) {
+  case 0x01:
+  case 0x07:
+    return "CGG1";
+  case 0x04:
+    return "CGH1";
+  case 0x09:
+    return "CGP1W";
+  case 0x0C:
+    return "CGD1";
+  case 0x0E:
+    return "CGDN1";
+  case 0x12:
+    return "CGPR1";
+  default:
+    return nullptr;
+  }
+}
+
+static bool decodeQingping(const std::vector<uint8_t> &buf,
+                           JsonDocument &json) {
+  if (buf.size() < 8)
+    return false;
+
+  uint8_t deviceId = buf[1];
+  const char *dev = qingpingDeviceType(deviceId);
+  if (!dev)
+    return false;
+
+  json["dev"] = dev;
+
+  bool haveOpen = false;
+  size_t off = 8;
+  while (off + 2 <= buf.size()) {
+    uint8_t id = buf[off];
+    uint8_t size = buf[off + 1];
+    off += 2;
+    if (off + size > buf.size())
+      break;
+    if (id == 0x04 && size == 1) {
+      json["open_dimensionless"] = buf[off] == 0 ? 1 : 0;
+      haveOpen = true;
+    } else if (id == 0x01 && size == 4) {
+      json["temperature_C"] = getInt16LE(buf, off) / 10.0;
+      json["humidity_percent"] = getUint16LE(buf, off + 2) / 10.0;
+    } else if (id == 0x02 && size == 1) {
+      json["battery_percent"] = buf[off];
+    } else if (id == 0x07 && size == 2) {
+      json["pressure_hPa"] = getUint16LE(buf, off) / 10.0;
+    } else if (id == 0x08 && size == 4) {
+      uint8_t motion = buf[off];
+      json["motion_dimensionless"] = motion;
+      json["illuminance_lux"] = getUint16LE(buf, off + 1) + buf[off + 3];
+      if (motion)
+        json["motionTimer_dimensionless"] = 1;
+    } else if (id == 0x09 && size == 4) {
+      json["illuminance_lux"] = getUint32LE(buf, off);
+    } else if (id == 0x11 && size == 1) {
+      json["light_dimensionless"] = buf[off];
+    } else if (id == 0x12 && size == 4) {
+      json["pm2_5_ugm3"] = getUint16LE(buf, off);
+      json["pm10_ugm3"] = getUint16LE(buf, off + 2);
+    } else if (id == 0x13 && size == 2) {
+      json["co2_ppm"] = getUint16LE(buf, off);
+    }
+    off += size;
+  }
+
+  // CGH1 long format (17 bytes): contact state in last byte, 0=open, 1=closed
+  if (deviceId == 0x04 && buf.size() == 17 && !haveOpen)
+    json["open_dimensionless"] = buf[16] == 0 ? 1 : 0;
+
+  // CGH1: device MAC embedded reversed at bytes 2..7
+  if (deviceId == 0x04) {
+    char macbuf[18];
+    snprintf(macbuf, sizeof(macbuf), "%02x:%02x:%02x:%02x:%02x:%02x", buf[7],
+             buf[6], buf[5], buf[4], buf[3], buf[2]);
+    json["macAddress"] = macbuf;
+  }
+  return true;
+}
+
 bool custom_decode(JsonObject BLEdata, JsonDocument &outDoc) {
+  // Qingping: service data on UUID 0xFDCD
+  if (BLEdata["servicedatauuid"].is<const char *>() &&
+      String(BLEdata["servicedatauuid"]).indexOf("fdcd") != -1) {
+    std::vector<uint8_t> sd;
+    if (hexStringToVector(BLEdata["servicedata"], sd) &&
+        decodeQingping(sd, outDoc))
+      return true;
+  }
+
+  // Mikrotik: manufacturer data, dispatch on company ID
   if (!BLEdata["manufacturerdata"].is<const char *>())
     return false;
 
