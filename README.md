@@ -156,9 +156,9 @@ flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
 
 Pre-built images can be found at https://github.com/mhaberler/sensorpod/releases
 
-Download the `sensorpod_<env>_firmware_<latest version>.bin` merged image (bootloader + partition table + app) and flash it over USB with [ESPTool](https://jason2866.github.io/esp32tool/) (see also https://github.com/Jason2866/esp32tool).
+Download the `sensorpod_<env>_firmware_<latest version>.bin` merged image (bootloader + partition table + app) and flash it over USB with [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/) (see also https://github.com/thelastoutpostworkshop/ESPConnect).
 
-Firmware updates work the same way: download the newer `*_firmware.bin` and reflash over USB. WiFi credentials and device settings live in NVS and survive the reflash.
+Firmware updates work the same way: download the newer `sensorpod_<env>_firmware_<latest version>.bin` and reflash over USB. WiFi credentials and device settings live in NVS and survive the reflash.
 
 ## Web UI
 
