@@ -14,6 +14,7 @@
 #include <BLEScan.h>
 
 #include "BTHomeDecoder.h"
+#include "custom_decoder.hpp"
 #include "decoder.h"
 #include "deviceconfig.hpp"
 
@@ -429,8 +430,7 @@ bool BLEScanner::deliver(JsonDocument &inDoc, JsonDocument &outDoc) {
     return false;
 
   case DeviceConfig::BLE_DECODER_CUSTOM:
-    log_w("custom decoder not implemented");
-    return false;
+    return custom_decode(BLEdata, outDoc);
 
   default: // BLE_DECODER_NONE — raw only, no decode
     return false;
