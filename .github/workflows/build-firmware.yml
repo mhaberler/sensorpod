@@ -7,6 +7,11 @@ on:
         description: "PlatformIO environments to build as a JSON array (leave empty to use [ci] envs from platformio.ini)"
         required: false
         default: ""
+      build_ota_bin:
+        description: "Also generate the app-only *_ota.bin artifact"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   setup:
@@ -60,6 +65,8 @@ jobs:
         run: rm -rf firmware && mkdir -p firmware
 
       - name: Build merged firmware
+        env:
+          CUSTOM_BUILD_OTA_BIN: ${{ inputs.build_ota_bin && 'yes' || 'no' }}
         run: pio run -e ${{ matrix.platformio_env }} -t firmware
 
       - name: Upload firmware artifact

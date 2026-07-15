@@ -58,6 +58,10 @@ jobs:
 
       - name: Build merged firmware
         shell: bash
+        env:
+          # set the repo variable BUILD_OTA_BIN to "yes" to include
+          # app-only *_ota.bin artifacts in releases
+          CUSTOM_BUILD_OTA_BIN: ${{ vars.BUILD_OTA_BIN || 'no' }}
         run: |
           for attempt in 1 2 3; do
             echo "Build attempt $attempt..."

@@ -108,7 +108,11 @@ def generate_merged_firmware(target, source, env):
 
     print(f"Merged firmware generated: {output_path}")
 
-    build_ota = str(get_project_option("custom_build_ota_bin", "no")).lower()
+    # env var (CI) overrides the platformio.ini option
+    build_ota = str(
+        os.environ.get("CUSTOM_BUILD_OTA_BIN")
+        or get_project_option("custom_build_ota_bin", "no")
+    ).lower()
     if build_ota in ("1", "yes", "true", "on"):
         ota_filename = ota_bin_filename(env, firmware_suffix)
         ota_path = os.path.join(firmware_dir, ota_filename)
