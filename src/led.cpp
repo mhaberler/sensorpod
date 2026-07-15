@@ -20,6 +20,16 @@ const unsigned long LED_SLOW_BLINK_INTERVAL = 500; // Broker down
 #endif
 
 static Adafruit_NeoPixel _led_pixel(1, RGB_LED_PIN, _LED_NEO_TYPE);
+// Force first rgb_set() to show(); avoids RMT traffic every loop().
+static uint32_t _led_shown_color = 0xFFFFFFFFu;
+
+static void rgb_set(uint32_t color) {
+  if (color == _led_shown_color)
+    return;
+  _led_pixel.setPixelColor(0, color);
+  _led_pixel.show();
+  _led_shown_color = color;
+}
 
 void ledSetup() {
 #if defined(RGB_POWER_PIN)
@@ -27,16 +37,15 @@ void ledSetup() {
   digitalWrite(RGB_POWER_PIN, RGB_POWER_ENABLE);
 #endif
   _led_pixel.begin();
-  _led_pixel.show();
+  _led_shown_color = 0xFFFFFFFFu;
+  rgb_set(0);
 }
 
 void blinkLed(int d, int times, uint32_t color) {
   for (int j = 0; j < times; j++) {
-    _led_pixel.setPixelColor(0, color);
-    _led_pixel.show();
+    rgb_set(color);
     delay(d);
-    _led_pixel.setPixelColor(0, 0);
-    _led_pixel.show();
+    rgb_set(0);
     delay(d);
   }
 }
@@ -108,35 +117,34 @@ void ledLoop() {
   switch (_led_state) {
   case LED_OFF:
 #if defined(LED_SCENARIO_RGB)
-    _led_pixel.setPixelColor(0, 0);
-    _led_pixel.show();
+    rgb_set(0);
 #elif defined(LED_SCENARIO_SINGLE)
     digitalWrite(LED_PIN, _LED_OFF);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-    M5.Power.setLed(0);
-    _m5_led_on = false;
+    if (_m5_led_on) {
+      M5.Power.setLed(0);
+      _m5_led_on = false;
+    }
 #endif
     break;
 
   case LED_SOLID:
 #if defined(LED_SCENARIO_RGB)
-    _led_pixel.setPixelColor(0, 0x00FF00); // Green
-    _led_pixel.show();
+    rgb_set(0x00FF00); // Green
 #elif defined(LED_SCENARIO_SINGLE)
     digitalWrite(LED_PIN, _LED_ON);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-    M5.Power.setLed(255);
-    _m5_led_on = true;
+    if (!_m5_led_on) {
+      M5.Power.setLed(255);
+      _m5_led_on = true;
+    }
 #endif
     break;
 
   case LED_SLOW_BLINK: // Broker down
     if (now - _led_last_toggle > LED_SLOW_BLINK_INTERVAL) {
 #if defined(LED_SCENARIO_RGB)
-      uint32_t color =
-          (_led_pixel.getPixelColor(0) == 0) ? 0xFF8800 : 0; // Orange/off
-      _led_pixel.setPixelColor(0, color);
-      _led_pixel.show();
+      rgb_set(_led_shown_color == 0 ? 0xFF8800 : 0); // Orange/off
 #elif defined(LED_SCENARIO_SINGLE)
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
@@ -150,10 +158,7 @@ void ledLoop() {
   case LED_FAST_BLINK: // WiFi down
     if (now - _led_last_toggle > LED_FAST_BLINK_INTERVAL) {
 #if defined(LED_SCENARIO_RGB)
-      uint32_t color =
-          (_led_pixel.getPixelColor(0) == 0) ? 0xFF0000 : 0; // Red/off
-      _led_pixel.setPixelColor(0, color);
-      _led_pixel.show();
+      rgb_set(_led_shown_color == 0 ? 0xFF0000 : 0); // Red/off
 #elif defined(LED_SCENARIO_SINGLE)
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)

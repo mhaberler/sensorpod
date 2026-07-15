@@ -52,7 +52,9 @@ static uint8_t level_from_arduino_line(const char *line) {
       }
     }
   }
-  return ARDUHAL_LOG_LEVEL_ERROR;
+  // Unparseable / partial line — drop (do not default to ERROR; that leaked
+  // truncated verbose lines through a warn/info filter).
+  return ARDUHAL_LOG_LEVEL_NONE;
 }
 
 static void hal_log_char_filtered(char c) {
@@ -99,9 +101,13 @@ static void apply_esp_log_level(uint8_t level) {
 
 static void install_hal_log_filter() {
   halLineLen = 0;
-  // Replaces default UART putc for Arduino log_printf — re-emit to Serial
-  // only when the line's level is within the current Mycila level.
+  // Arduino log_printf → ets_printf calls putc1 and putc2. USB CDC boards
+  // (S3/C6/P4, …) install an unfiltered CDC writer on putc2 in
+  // HWCDC::setDebugOutput(), so a putc1-only filter still lets every
+  // log_v through — e.g. NeoPixel RMT spam that wedges headless CDC TX.
+  // Route all HAL chars through our filter; re-emit via Serial.write.
   ets_install_putc1(hal_log_char_filtered);
+  ets_install_putc2(NULL);
 }
 
 const char *logging_level_name(uint8_t level) {

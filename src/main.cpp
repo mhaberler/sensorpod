@@ -138,6 +138,10 @@ void setup() {
   while (!Serial && millis() - serial_t0 < 1500) {
     delay(10);
   }
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // Don't stall the app when CDC TX backs up with no host attached.
+  Serial.setTxTimeoutMs(0);
+#endif
   logging_setup();
   listEnv();
   hostName = WiFi.getHostname();
