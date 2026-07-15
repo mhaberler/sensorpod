@@ -183,7 +183,11 @@ Click **Firmware update** on the root page, or browse to `/update`. The page acc
 
 Both are published on the [releases page](https://github.com/mhaberler/sensorpod/releases). After a successful upload the device reboots into the new image; the previously-running slot becomes the fallback. The partition table on `/` will show the new image as `RUN` after reboot.
 
-The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag, which is composed into the default and release env build_flags via the `[ota]` block in `platformio.ini`. Drop the inclusion to build a firmware without the OTA endpoint.
+The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag and is **disabled by default** — a stock build has no `/update` page and must be flashed over USB. To enable it, add `-DOTA_WEB_UPDATER` to the `build_flags` of your env (or uncomment the define in the `[ota]` block of `platformio.ini` to enable it globally).
+
+The app-only `*_ota.bin` artifact is likewise **not produced by default**. Set `custom_build_ota_bin = yes` (in `[env]` or a specific env section) to have `pio run -t firmware` emit it alongside the merged image.
+
+Note: pre-built release images only support web OTA if the corresponding env opts in to `OTA_WEB_UPDATER`.
 
 ## WiFi provisioning
 

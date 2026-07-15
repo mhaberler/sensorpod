@@ -108,10 +108,14 @@ def generate_merged_firmware(target, source, env):
 
     print(f"Merged firmware generated: {output_path}")
 
-    ota_filename = ota_bin_filename(env, firmware_suffix)
-    ota_path = os.path.join(firmware_dir, ota_filename)
-    shutil.copy2(app_bin, ota_path)
-    print(f"OTA (app-only) binary copied: {ota_path}")
+    build_ota = str(get_project_option("custom_build_ota_bin", "no")).lower()
+    if build_ota in ("1", "yes", "true", "on"):
+        ota_filename = ota_bin_filename(env, firmware_suffix)
+        ota_path = os.path.join(firmware_dir, ota_filename)
+        shutil.copy2(app_bin, ota_path)
+        print(f"OTA (app-only) binary copied: {ota_path}")
+    else:
+        print("Skipping OTA binary (set custom_build_ota_bin = yes to generate)")
 
 
 firmware_suffix = get_project_option("custom_firmware_suffix", "bin")
