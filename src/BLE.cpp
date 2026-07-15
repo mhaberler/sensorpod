@@ -22,7 +22,7 @@ void blescanner_setup() {
   // Optional: set a BTHome decryption key (32-char hex string)
   // bleScanner.setBTHomeKey("00112233445566778899aabbccddeeff");
 
-  bleScanner.begin(32768,   // ring buffer size
+  bleScanner.begin(32768,  // ring buffer size
                    1000,   // scan time (ms)
                    100,    // scan interval
                    99,     // scan window
@@ -31,10 +31,17 @@ void blescanner_setup() {
                    RBMEM); // ring buffer memory capability
 }
 
+// Drain up to this many queued advertisements per loop() pass, so a burst
+// of BLE traffic doesn't starve the queue and drive acquireFail up while
+// the rest of loop() (WiFi/MQTT/web/Improv) still gets serviced each pass.
+#define BLE_DRAIN_BUDGET 32
+
 void blescanner_loop() {
-  JsonDocument doc;
-  char mac[16];
-  if (bleScanner.process(doc, mac, sizeof(mac))) {
+  for (int i = 0; i < BLE_DRAIN_BUDGET; i++) {
+    JsonDocument doc;
+    char mac[16];
+    if (!bleScanner.process(doc, mac, sizeof(mac)))
+      break;
     String payload;
     serializeJson(doc, payload);
     log_d("ble/%s: %s", mac, payload.c_str());

@@ -256,12 +256,17 @@ class ScanCallback : public BLEAdvertisedDeviceCallbacks {
       return;
     }
     size_t n = serializeMsgPack(BLEdata, ble_adv, total);
-    if (n != total) {
+    if (n != total)
       log_e("serializeMsgPack: expected %u got %u", total, n);
+    // Always complete the acquired slot, even on a size mismatch — a
+    // dangling acquire never gets returned by FreeRTOS and permanently
+    // wedges a no-split ring buffer (every later send_acquire fails).
+    // The consumer's deserializeMsgPack() error check handles a garbage
+    // item gracefully.
+    if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
+      s_impl->queueFull++;
     } else {
-      if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
-        s_impl->queueFull++;
-      }
+      s_impl->queue->update_high_watermark();
     }
   }
 };

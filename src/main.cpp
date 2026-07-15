@@ -48,7 +48,7 @@ bool wifi_sleep_enabled = false;
 // BLE options (deviceconfig.hpp), loaded at boot, live-updated by web UI
 volatile uint8_t ble_decoder_mode = DeviceConfig::BLE_DECODER_THEENGS;
 volatile bool ble_retain_undecoded = false;
-volatile bool ble_dedup_enabled = false;
+volatile bool ble_dedup_enabled = true;
 volatile uint32_t ble_dedup_age = 1;
 static bool ble_scan_enabled = true; // boot-time gate, restart to change
 // True while an Improv provisioning connect is in progress, so the STA

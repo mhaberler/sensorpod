@@ -113,8 +113,8 @@ public:
   static bool isBleDedupEnabled() {
     Preferences prefs;
     if (!prefs.begin("device-config", true))
-      return false;
-    bool enabled = prefs.getBool("ble_dedup", false);
+      return true;
+    bool enabled = prefs.getBool("ble_dedup", true);
     prefs.end();
     return enabled;
   }
