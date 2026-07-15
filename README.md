@@ -56,7 +56,7 @@ In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The dev
     - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
 - **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8080 with TXT record `path=/mqtt`
     - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
-- **HTTP service:** `_http._tcp.local` on port 80 (sysinfo + OTA web updater)
+- **HTTP service:** `_http._tcp.local` on port 80 (sysinfo web UI)
 - **Workstation:** `_workstation._tcp.local` (generic host advertisement)
 
 Clients that browse mDNS (iOS, Linux Avahi, Home Assistant) can discover the broker without knowing its IP. Android's mDNS resolver is unreliable — use the fixed AP IP `192.168.4.1` there.
@@ -111,13 +111,12 @@ The active build envs cover a fleet of M5Stack boards plus a few generic devkits
 
 ## Devices
 
-**Flash size matters.** The full feature set — WiFi + BLE stacks, the Theengs decoder device database, MQTT broker, web UI, OTA — produces an app image of ~1.8–1.93 MB. On **4 MB flash devices** (M5Stack NanoC6, Seeed XIAO C6) that is a tight fit:
+**Flash size matters.** The full feature set — WiFi + BLE stacks, the Theengs decoder device database, MQTT broker, web UI — produces an app image of ~1.8–1.93 MB. On **4 MB flash devices** (M5Stack NanoC6, Seeed XIAO C6) that is a tight fit:
 
-- The dual-slot OTA layout (`ota_nofs_4MB.csv`) provides two 1984 KB app slots; current images fill them to **90–96%**. Web OTA works, but headroom is small — adding features (or upstream growth of the Theengs device DB) can overflow the slot again.
-- The fallback is a single ~4 MB app partition (`max_app_4MB.csv`), which **loses over-the-air updates** — every flash needs a USB cable.
+- The 4 MB envs use a single large app partition (`max_app_4MB.csv`); firmware is flashed over USB with esptool.
 - Size-conscious build flags (`-Os`, `-fno-exceptions`) are already applied.
 
-**Recommendation:** for new deployments prefer boards with **≥8 MB flash**, ideally the **ESP32-P4** family (M5Stack Tab5, Waveshare ESP32-P4-WiFi6, 16 MB) or other large-flash variants — they hold two comfortable OTA slots with room for feature growth. Keep the 4 MB C6 boards for size-frozen or USB-accessible installs.
+**Recommendation:** for new deployments prefer boards with **≥8 MB flash**, ideally the **ESP32-P4** family (M5Stack Tab5, Waveshare ESP32-P4-WiFi6, 16 MB) or other large-flash variants — they leave comfortable room for feature growth. Keep the 4 MB C6 boards for size-frozen installs.
 
 ## Building
 
@@ -153,19 +152,15 @@ cable. The monitor no longer resets the board on connect (`monitor_rts/dtr=0`),
 so to catch the boot banner open the monitor within ~1.5s of resetting, or
 flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
 
-## Pre-built firmware
+## Pre-built firmware & updates
 
-can be found at https://github.com/mhaberler/sensorpod/releases
+Pre-built images can be found at https://github.com/mhaberler/sensorpod/releases
 
-download the `sensorpod_m5stack-nanoc6_firmware_<latest version>.bin`
+Download the `sensorpod_<env>_firmware_<latest version>.bin` merged image (bootloader + partition table + app) and flash it over USB with [ESPTool](https://jason2866.github.io/esp32tool/) (see also https://github.com/Jason2866/esp32tool).
 
-Use [ESPTool](https://jason2866.github.io/esp32tool/) to flash the firmware
+Firmware updates work the same way: download the newer `*_firmware.bin` and reflash over USB. WiFi credentials and device settings live in NVS and survive the reflash.
 
-See also https://github.com/Jason2866/esp32tool
-
-## Firmware update
-
-After the initial USB flash of a pre-built image (see [Pre-built firmware](#pre-built-firmware) above), all subsequent firmware updates can be done over WiFi — no cable needed.
+## Web UI
 
 Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on port 80:
 
@@ -173,21 +168,7 @@ Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on p
 - `http://192.168.4.1/` (when connected to SensorPod's own AP — recommended for Android)
 - `http://<STA-IP>/` (look up the IP on your router or in the serial log)
 
-The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table (with `RUN` and `NEXT` slots highlighted), network state, and announced mDNS services. `GET /data` returns the same as JSON.
-
-### OTA web updater
-
-Click **Firmware update** on the root page, or browse to `/update`. The page accepts a multipart upload of an OTA image.
-
-**Upload the `*_ota.bin` artifact, not `*_firmware.bin`.** The `*_firmware.bin` is the merged image (bootloader + partition table + app) and is only valid when flashed over USB with esptool. OTA must write only the app slot; the OTA file is the plain app binary.
-
-Both are published on the [releases page](https://github.com/mhaberler/sensorpod/releases). After a successful upload the device reboots into the new image; the previously-running slot becomes the fallback. The partition table on `/` will show the new image as `RUN` after reboot.
-
-The OTA endpoint is gated on the `OTA_WEB_UPDATER` build flag and is **disabled by default** — a stock build has no `/update` page and must be flashed over USB. To enable it, add `-DOTA_WEB_UPDATER` to the `build_flags` of your env (or uncomment the define in the `[ota]` block of `platformio.ini` to enable it globally).
-
-The app-only `*_ota.bin` artifact is likewise **not produced by default**. Set `custom_build_ota_bin = yes` (in `[env]` or a specific env section) to have `pio run -t firmware` emit it alongside the merged image.
-
-Note: pre-built release images only support web OTA if the corresponding env opts in to `OTA_WEB_UPDATER`.
+The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table, network state, BLE statistics, and announced mDNS services. `GET /data` returns the same as JSON.
 
 ## WiFi provisioning
 
@@ -293,10 +274,10 @@ sensorpod/
 │   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, BLE options
 │   ├── mdns_state.hpp      # mDNS service struct + externs
 │   ├── led.hpp/cpp         # LED status feedback
-│   ├── ota.cpp             # OTA web updater (gated on OTA_WEB_UPDATER)
+│   ├── ota.cpp             # optional OTA web updater (off by default, gated on OTA_WEB_UPDATER)
 │   ├── http_server.hpp     # shared WebServer handle + page style
 │   └── credstore.hpp       # NVS wrapper for WiFi credentials
-├── scripts/                # PlatformIO extra_scripts (build info, version, OTA)
+├── scripts/                # PlatformIO extra_scripts (build info, version, merged firmware)
 ├── platformio.ini          # Boards + envs + lib_deps
 └── *.csv                   # Partition tables
 ```
