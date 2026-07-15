@@ -8,8 +8,8 @@
 
 static LEDState _led_state = LED_OFF;
 static unsigned long _led_last_toggle = 0;
-const unsigned long LED_FAST_BLINK_INTERVAL = 200;   // WiFi down
-const unsigned long LED_SLOW_BLINK_INTERVAL = 500;   // Broker down
+const unsigned long LED_FAST_BLINK_INTERVAL = 200; // WiFi down
+const unsigned long LED_SLOW_BLINK_INTERVAL = 500; // Broker down
 
 #if defined(LED_SCENARIO_RGB)
 #include <Adafruit_NeoPixel.h>
@@ -23,22 +23,22 @@ static Adafruit_NeoPixel _led_pixel(1, RGB_LED_PIN, _LED_NEO_TYPE);
 
 void ledSetup() {
 #if defined(RGB_POWER_PIN)
-    pinMode(RGB_POWER_PIN, OUTPUT);
-    digitalWrite(RGB_POWER_PIN,RGB_POWER_ENABLE);
+  pinMode(RGB_POWER_PIN, OUTPUT);
+  digitalWrite(RGB_POWER_PIN, RGB_POWER_ENABLE);
 #endif
-    _led_pixel.begin();
-    _led_pixel.show();
+  _led_pixel.begin();
+  _led_pixel.show();
 }
 
 void blinkLed(int d, int times, uint32_t color) {
-    for (int j = 0; j < times; j++) {
-        _led_pixel.setPixelColor(0, color);
-        _led_pixel.show();
-        delay(d);
-        _led_pixel.setPixelColor(0, 0);
-        _led_pixel.show();
-        delay(d);
-    }
+  for (int j = 0; j < times; j++) {
+    _led_pixel.setPixelColor(0, color);
+    _led_pixel.show();
+    delay(d);
+    _led_pixel.setPixelColor(0, 0);
+    _led_pixel.show();
+    delay(d);
+  }
 }
 
 #elif defined(LED_SCENARIO_SINGLE)
@@ -51,18 +51,16 @@ constexpr int _LED_ON = HIGH;
 constexpr int _LED_OFF = LOW;
 #endif
 
-void ledSetup() {
-    pinMode(LED_PIN, OUTPUT);
-}
+void ledSetup() { pinMode(LED_PIN, OUTPUT); }
 
 void blinkLed(int d, int times, uint32_t color) {
-    (void)color;
-    for (int j = 0; j < times; j++) {
-        digitalWrite(LED_PIN, _LED_ON);
-        delay(d);
-        digitalWrite(LED_PIN, _LED_OFF);
-        delay(d);
-    }
+  (void)color;
+  for (int j = 0; j < times; j++) {
+    digitalWrite(LED_PIN, _LED_ON);
+    delay(d);
+    digitalWrite(LED_PIN, _LED_OFF);
+    delay(d);
+  }
 }
 
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
@@ -70,18 +68,18 @@ void blinkLed(int d, int times, uint32_t color) {
 static bool _m5_led_on = false;
 
 void ledSetup() {
-    // M5.begin() already configures the power LED; nothing to do here.
+  // M5.begin() already configures the power LED; nothing to do here.
 }
 
 void blinkLed(int d, int times, uint32_t color) {
-    (void)color;
-    for (int j = 0; j < times; j++) {
-        M5.Power.setLed(255);
-        delay(d);
-        M5.Power.setLed(0);
-        delay(d);
-    }
-    _m5_led_on = false;
+  (void)color;
+  for (int j = 0; j < times; j++) {
+    M5.Power.setLed(255);
+    delay(d);
+    M5.Power.setLed(0);
+    delay(d);
+  }
+  _m5_led_on = false;
 }
 
 #else
@@ -89,79 +87,81 @@ void blinkLed(int d, int times, uint32_t color) {
 void ledSetup() {}
 
 void blinkLed(int d, int times, uint32_t color) {
-    (void)d;
-    (void)times;
-    (void)color;
+  (void)d;
+  (void)times;
+  (void)color;
 }
 
 #endif
 
 // LED status feedback: WiFi/broker connection state
 void updateLed(LEDState state) {
-    if (state != _led_state) {
-        _led_state = state;
-        _led_last_toggle = millis();
-    }
+  if (state != _led_state) {
+    _led_state = state;
+    _led_last_toggle = millis();
+  }
 }
 
 void ledLoop() {
-    unsigned long now = millis();
+  unsigned long now = millis();
 
-    switch (_led_state) {
-        case LED_OFF:
+  switch (_led_state) {
+  case LED_OFF:
 #if defined(LED_SCENARIO_RGB)
-            _led_pixel.setPixelColor(0, 0);
-            _led_pixel.show();
+    _led_pixel.setPixelColor(0, 0);
+    _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
-            digitalWrite(LED_PIN, _LED_OFF);
+    digitalWrite(LED_PIN, _LED_OFF);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-            M5.Power.setLed(0);
-            _m5_led_on = false;
+    M5.Power.setLed(0);
+    _m5_led_on = false;
 #endif
-            break;
+    break;
 
-        case LED_SOLID:
+  case LED_SOLID:
 #if defined(LED_SCENARIO_RGB)
-            _led_pixel.setPixelColor(0, 0x00FF00);  // Green
-            _led_pixel.show();
+    _led_pixel.setPixelColor(0, 0x00FF00); // Green
+    _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
-            digitalWrite(LED_PIN, _LED_ON);
+    digitalWrite(LED_PIN, _LED_ON);
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-            M5.Power.setLed(255);
-            _m5_led_on = true;
+    M5.Power.setLed(255);
+    _m5_led_on = true;
 #endif
-            break;
+    break;
 
-        case LED_SLOW_BLINK:  // Broker down
-            if (now - _led_last_toggle > LED_SLOW_BLINK_INTERVAL) {
+  case LED_SLOW_BLINK: // Broker down
+    if (now - _led_last_toggle > LED_SLOW_BLINK_INTERVAL) {
 #if defined(LED_SCENARIO_RGB)
-                uint32_t color = (_led_pixel.getPixelColor(0) == 0) ? 0xFF8800 : 0;  // Orange/off
-                _led_pixel.setPixelColor(0, color);
-                _led_pixel.show();
+      uint32_t color =
+          (_led_pixel.getPixelColor(0) == 0) ? 0xFF8800 : 0; // Orange/off
+      _led_pixel.setPixelColor(0, color);
+      _led_pixel.show();
 #elif defined(LED_SCENARIO_SINGLE)
-                digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 #elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-                _m5_led_on = !_m5_led_on;
-                M5.Power.setLed(_m5_led_on ? 255 : 0);
+      _m5_led_on = !_m5_led_on;
+      M5.Power.setLed(_m5_led_on ? 255 : 0);
 #endif
-                _led_last_toggle = now;
-            }
-            break;
-
-        case LED_FAST_BLINK:  // WiFi down
-            if (now - _led_last_toggle > LED_FAST_BLINK_INTERVAL) {
-#if defined(LED_SCENARIO_RGB)
-                uint32_t color = (_led_pixel.getPixelColor(0) == 0) ? 0xFF0000 : 0;  // Red/off
-                _led_pixel.setPixelColor(0, color);
-                _led_pixel.show();
-#elif defined(LED_SCENARIO_SINGLE)
-                digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-                _m5_led_on = !_m5_led_on;
-                M5.Power.setLed(_m5_led_on ? 255 : 0);
-#endif
-                _led_last_toggle = now;
-            }
-            break;
+      _led_last_toggle = now;
     }
+    break;
+
+  case LED_FAST_BLINK: // WiFi down
+    if (now - _led_last_toggle > LED_FAST_BLINK_INTERVAL) {
+#if defined(LED_SCENARIO_RGB)
+      uint32_t color =
+          (_led_pixel.getPixelColor(0) == 0) ? 0xFF0000 : 0; // Red/off
+      _led_pixel.setPixelColor(0, color);
+      _led_pixel.show();
+#elif defined(LED_SCENARIO_SINGLE)
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+      _m5_led_on = !_m5_led_on;
+      M5.Power.setLed(_m5_led_on ? 255 : 0);
+#endif
+      _led_last_toggle = now;
+    }
+    break;
+  }
 }

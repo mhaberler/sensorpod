@@ -63,18 +63,18 @@ void button_loop(void) {
   if (M5.BtnA.wasDecideClickCount()) {
     int n = M5.BtnA.getClickCount();
     switch (n) {
-      case 1:
-        log_i("singleClick() detected.");
-        numClicks = 1;
-        break;
-      case 2:
-        log_i("doubleClick() detected.");
-        numClicks = 2;
-        break;
-      default:
-        log_i("%d clicks detected.", n);
-        numClicks = n;
-        break;
+    case 1:
+      log_i("singleClick() detected.");
+      numClicks = 1;
+      break;
+    case 2:
+      log_i("doubleClick() detected.");
+      numClicks = 2;
+      break;
+    default:
+      log_i("%d clicks detected.", n);
+      numClicks = n;
+      break;
     }
   }
   if (M5.BtnA.wasHold()) {

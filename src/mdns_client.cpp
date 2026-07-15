@@ -38,7 +38,7 @@ std::vector<DiscoveredBroker> MDNSClient::discover_mqtt_brokers() {
   return brokers;
 }
 
-void MDNSClient::print_brokers(const std::vector<DiscoveredBroker>& brokers) {
+void MDNSClient::print_brokers(const std::vector<DiscoveredBroker> &brokers) {
   if (brokers.empty()) {
     log_i("No MQTT brokers discovered");
     return;
@@ -53,13 +53,14 @@ void MDNSClient::print_brokers(const std::vector<DiscoveredBroker>& brokers) {
 }
 
 void MDNSClient::start_async_discovery() {
-  if (discovery_running) return;
+  if (discovery_running)
+    return;
   discovery_running = true;
   xTaskCreate(discovery_task, "mdns_disc", 4096, this, 1, nullptr);
 }
 
-void MDNSClient::discovery_task(void* arg) {
-  MDNSClient* self = static_cast<MDNSClient*>(arg);
+void MDNSClient::discovery_task(void *arg) {
+  MDNSClient *self = static_cast<MDNSClient *>(arg);
   log_d("mdns_disc task: starting discovery");
   self->discover_mqtt_brokers();
   log_d("mdns_disc task: discovery complete");

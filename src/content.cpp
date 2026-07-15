@@ -157,6 +157,50 @@ void sysinfo_html(String &out, bool is_broker_mode) {
          "phone hotspot; costs more idle current. Applied immediately, no "
          "reboot.</small></p></form>";
 
+  // BLE options
+  {
+    const bool ble_scan = DeviceConfig::isBleScanEnabled();
+    const uint8_t ble_decoder = DeviceConfig::getBleDecoder();
+    const bool ble_retain = DeviceConfig::isBleRetainUndecoded();
+    const bool ble_dedup = DeviceConfig::isBleDedupEnabled();
+    const uint32_t ble_age = DeviceConfig::getBleDedupAge();
+
+    out += "<h3>BLE</h3><form id='bleForm'>";
+    appendf(out, "<p><strong>BLE scanning:</strong> %s</p>",
+            ble_scan ? "Enabled" : "Disabled");
+    appendf(out,
+            "<button type='button' class='config-btn' "
+            "onclick='saveBleScan(%d)'>%s BLE Scanning and Reboot</button>",
+            ble_scan ? 0 : 1, ble_scan ? "Disable" : "Enable");
+
+    out += "<p><strong>Decoder:</strong> (applied immediately)</p>";
+    static const char *decoder_labels[] = {"Theengs decoder",
+                                           "BTHomeV2 decoder", "Custom decoder",
+                                           "Undecoded advertisements"};
+    for (int i = 0; i < 4; i++) {
+      appendf(out,
+              "<label><input type='radio' name='bleDecoder' value='%d'%s "
+              "onclick='saveBleDecoder(%d)'> %s</label><br>",
+              i, i == ble_decoder ? " checked" : "", i, decoder_labels[i]);
+    }
+
+    appendf(out,
+            "<p><label><input type='checkbox' id='bleRetain'%s "
+            "onclick='saveBleRetain(this.checked)'> Retain undecoded "
+            "advertisements (publish raw)</label></p>",
+            ble_retain ? " checked" : "");
+
+    appendf(out,
+            "<p><label><input type='checkbox' id='bleDedup'%s> Deduplicate "
+            "advertisements</label> "
+            "<label>max age <input type='number' id='bleDedupAge' value='%u' "
+            "min='1' style='width:4em'> s</label> "
+            "<button type='button' class='config-btn' "
+            "onclick='saveBleDedup()'>Apply</button></p>",
+            ble_dedup ? " checked" : "", (unsigned)ble_age);
+    out += "</form>";
+  }
+
   // Client mode: show broker selection section
   if (!is_broker_mode) {
     out += "<p><strong>Broker Configuration (Client Mode):</strong></p>";
@@ -244,6 +288,36 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       ".then(r=>r.json()).then(d=>{if(d.error){alert('Error: "
       "'+d.error);return;}"
       "alert('Saved & applied');location.reload();})"
+      ".catch(e=>alert('Error: '+e))}"
+      "function saveBleScan(e){"
+      "fetch('/api/"
+      "set-ble-scan',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:'enabled='+e})"
+      ".then(r=>r.json()).then(d=>{if(d.error){alert('Error: "
+      "'+d.error);return;}"
+      "alert('Saved, device restarting...')})"
+      ".catch(e=>alert('Error: '+e))}"
+      "function saveBleDecoder(v){"
+      "fetch('/api/"
+      "set-ble-decoder',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:'decoder='+v})"
+      ".then(r=>r.json()).then(d=>{if(d.error)alert('Error: '+d.error)})"
+      ".catch(e=>alert('Error: '+e))}"
+      "function saveBleRetain(c){"
+      "fetch('/api/"
+      "set-ble-retain',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:'enabled='+(c?1:0)})"
+      ".then(r=>r.json()).then(d=>{if(d.error)alert('Error: '+d.error)})"
+      ".catch(e=>alert('Error: '+e))}"
+      "function saveBleDedup(){"
+      "var c=document.getElementById('bleDedup').checked?1:0;"
+      "var a=document.getElementById('bleDedupAge').value;"
+      "fetch('/api/"
+      "set-ble-dedup',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:'enabled='+c+'&age='+a})"
+      ".then(r=>r.json()).then(d=>{if(d.error){alert('Error: "
+      "'+d.error);return;}"
+      "alert('Saved & applied')})"
       ".catch(e=>alert('Error: '+e))}"
       "window.addEventListener('load',loadBrokers);"
       "</script></div>";
@@ -475,6 +549,12 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_u(out, "uptime_s", millis() / 1000, first);
   json_kv_u(out, "broker_mode", is_broker_mode ? 1 : 0, first);
   json_kv_u(out, "wifi_sleep", wifi_sleep ? 1 : 0, first);
+  json_kv_u(out, "ble_scan", DeviceConfig::isBleScanEnabled() ? 1 : 0, first);
+  json_kv_u(out, "ble_decoder", DeviceConfig::getBleDecoder(), first);
+  json_kv_u(out, "ble_retain", DeviceConfig::isBleRetainUndecoded() ? 1 : 0,
+            first);
+  json_kv_u(out, "ble_dedup", DeviceConfig::isBleDedupEnabled() ? 1 : 0, first);
+  json_kv_u(out, "ble_dedup_age", DeviceConfig::getBleDedupAge(), first);
 
   json_kv_str(out, "chip_model", ESP.getChipModel(), first);
   json_kv_u(out, "chip_cores", ESP.getChipCores(), first);

@@ -42,11 +42,15 @@ bool lox_present;
 #include "mqtt_client.hpp"
 ImprovWiFi improvSerial(&Serial);
 
-
-
 extern String hostName;
 bool is_broker_mode = true;
 bool wifi_sleep_enabled = false;
+// BLE options (deviceconfig.hpp), loaded at boot, live-updated by web UI
+volatile uint8_t ble_decoder_mode = DeviceConfig::BLE_DECODER_THEENGS;
+volatile bool ble_retain_undecoded = false;
+volatile bool ble_dedup_enabled = false;
+volatile uint32_t ble_dedup_age = 1;
+static bool ble_scan_enabled = true; // boot-time gate, restart to change
 // True while an Improv provisioning connect is in progress, so the STA
 // reconnect watchdog in wifisetup.cpp stays out of Improv's way.
 bool improv_provisioning = false;
@@ -138,6 +142,17 @@ void setup() {
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
   log_d("WiFi modem-sleep: %s", wifi_sleep_enabled ? "on" : "off");
 
+  // BLE options
+  ble_scan_enabled = DeviceConfig::isBleScanEnabled();
+  ble_decoder_mode = DeviceConfig::getBleDecoder();
+  ble_retain_undecoded = DeviceConfig::isBleRetainUndecoded();
+  ble_dedup_enabled = DeviceConfig::isBleDedupEnabled();
+  ble_dedup_age = DeviceConfig::getBleDedupAge();
+  log_d("BLE: scan=%s decoder=%u retain=%s dedup=%s age=%us",
+        ble_scan_enabled ? "on" : "off", ble_decoder_mode,
+        ble_retain_undecoded ? "on" : "off", ble_dedup_enabled ? "on" : "off",
+        (unsigned)ble_dedup_age);
+
 #if !defined(HAS_M5UNIFIED)
   Wire.begin(SDA_PIN, SCL_PIN, 400000);
 #endif
@@ -146,7 +161,8 @@ void setup() {
   // i2c_scan(Wire);
   lox_present = lox_init(Wire);
   wifi_setup();
-  bthome_setup();
+  if (ble_scan_enabled)
+    bthome_setup();
 
   // Initialize MQTT device based on role
   if (is_broker_mode) {
@@ -175,7 +191,8 @@ void loop() {
 
   unsigned long now = millis();
   button_loop();
-  bthome_loop();
+  if (ble_scan_enabled)
+    bthome_loop();
 #if defined(HAS_M5UNIFIED)
   M5.update();
 #endif
