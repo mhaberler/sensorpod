@@ -438,6 +438,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
   appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
 
+#ifdef OTA_WEB_UPDATER
   out += "<h3>SafeGithubOTA</h3><ul>";
 #ifdef SGO_DEFAULT_OWNER
   appendf(out, "<li>Owner: %s</li>", SGO_DEFAULT_OWNER);
@@ -449,6 +450,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>OTA bin: %s</li>", SGO_DEFAULT_BIN);
 #endif
   out += "</ul>";
+#endif
 
   out += "<h3>Chip</h3><ul>";
   appendf(out, "<li>Model: %s</li>", ESP.getChipModel());
