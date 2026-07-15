@@ -17,9 +17,12 @@ static constexpr LogLevelEntry kLogLevels[] = {
     {"debug", ARDUHAL_LOG_LEVEL_DEBUG}, {"verbose", ARDUHAL_LOG_LEVEL_VERBOSE},
 };
 
-static String serialLine;
 static String pendingWsCommand;
 static bool wsCommandPending = false;
+
+// Improv quiet window: clamp runtime level to NONE without touching NVS.
+static bool quiet_active = false;
+static uint8_t level_before_quiet = ARDUHAL_LOG_LEVEL_INFO;
 
 // Arduino HAL / ets putc path: fixed line buffer (NO heap — putc can run
 // re-entrantly during String::realloc and StreamString would poison the heap).
@@ -121,14 +124,30 @@ bool logging_parse_level(const char *name, uint8_t *out) {
   return false;
 }
 
-uint8_t logging_current_level() { return logger.getLevel(); }
+uint8_t logging_current_level() {
+  // Configured preference (NVS), not the temporary quiet clamp.
+  return DeviceConfig::getLogLevel();
+}
+
+void logging_set_level_runtime(uint8_t level) {
+  if (level > ARDUHAL_LOG_LEVEL_VERBOSE)
+    return;
+  logger.setLevel(level);
+  apply_esp_log_level(level);
+}
 
 bool logging_apply_level(uint8_t level) {
   if (level > ARDUHAL_LOG_LEVEL_VERBOSE)
     return false;
-  logger.setLevel(level);
-  apply_esp_log_level(level);
-  return DeviceConfig::setLogLevel(level);
+  if (!DeviceConfig::setLogLevel(level))
+    return false;
+  if (quiet_active) {
+    // Keep Serial quiet for Improv; remember the new preference for restore.
+    level_before_quiet = level;
+  } else {
+    logging_set_level_runtime(level);
+  }
+  return true;
 }
 
 bool logging_apply_level_name(const char *name) {
@@ -137,6 +156,25 @@ bool logging_apply_level_name(const char *name) {
     return false;
   return logging_apply_level(level);
 }
+
+void logging_quiet_begin() {
+  if (quiet_active)
+    return;
+  level_before_quiet = DeviceConfig::getLogLevel();
+  quiet_active = true;
+  // NONE: any Serial TX (even ERROR) corrupts binary Improv framing.
+  logging_set_level_runtime(ARDUHAL_LOG_LEVEL_NONE);
+}
+
+void logging_quiet_end() {
+  if (!quiet_active)
+    return;
+  quiet_active = false;
+  // Prefer NVS (may have been updated during quiet) over the snapshot.
+  logging_set_level_runtime(DeviceConfig::getLogLevel());
+}
+
+bool logging_is_quiet() { return quiet_active; }
 
 static void ackTo(const char *source, const char *msg) {
   if (strcmp(source, "webserial") == 0)
@@ -161,9 +199,11 @@ static void printHelp(const char *source) {
 static void handleLogCommand(const char *raw, const char *source) {
   const String cmd = normalizeCommand(raw);
   if (cmd == "level") {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "[LOGGER] Log level is %s",
-             logging_level_name(logger.getLevel()));
+    char buf[80];
+    snprintf(buf, sizeof(buf), "[LOGGER] Log level is %s%s",
+             logging_level_name(logger.getLevel()),
+             quiet_active ? " (quiet for Improv; NVS preference preserved)"
+                          : "");
     ackTo(source, buf);
     return;
   }
@@ -191,22 +231,6 @@ static void handleLogCommand(const char *raw, const char *source) {
   }
   printHelp(source);
   ackTo(source, "[LOGGER] Unknown command.");
-}
-
-static void pollSerialInput() {
-  while (Serial.available()) {
-    const char c = static_cast<char>(Serial.read());
-    if (c == '\n' || c == '\r') {
-      serialLine.trim();
-      if (!serialLine.isEmpty())
-        handleLogCommand(serialLine.c_str(), "serial");
-      serialLine = "";
-    } else {
-      serialLine += c;
-      if (serialLine.length() > 120)
-        serialLine.remove(0, serialLine.length() - 120);
-    }
-  }
 }
 
 void logging_setup() {
@@ -238,5 +262,5 @@ void logging_loop() {
     pendingWsCommand = "";
     handleLogCommand(cmd.c_str(), "webserial");
   }
-  pollSerialInput();
+  // Do not read Serial here — Improv owns the USB/UART RX path.
 }

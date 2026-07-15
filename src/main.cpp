@@ -71,17 +71,22 @@ bool lox_init(TwoWire &wire);
 std::optional<uint16_t> lox_poll(TwoWire &wire);
 
 void onImprovWiFiErrorCb(ImprovTypes::Error err) {
-  log_e("Improv error %d", err);
   improv_provisioning = false;
+  String ssid, pass;
+  if (loadWiFiCredentials(ssid, pass))
+    logging_quiet_end();
+  // else stay quiet — still waiting for successful provision
+  log_e("Improv error %d", err);
   WiFi.setAutoReconnect(true);
   blinkLed(2000, 3);
 }
 
 void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
-  log_i("Improv provisioned ssid=%s", ssid);
   improv_provisioning = false;
   saveWiFiCredentials(ssid, password);
   cacheStaCredentials(ssid, password);
+  logging_quiet_end();
+  log_i("Improv provisioned ssid=%s", ssid);
   WiFi.setAutoReconnect(true);
   blinkLed(100, 3);
   startStaAttempt(String(ssid), String(password));
@@ -91,6 +96,7 @@ void onImprovWiFiConnectedCb(const char *ssid, const char *password) {
 // interference, then delegate to the library's default connect logic.
 bool onImprovCustomConnect(const char *ssid, const char *password) {
   improv_provisioning = true;
+  logging_quiet_begin();
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(false);
   delay(50);
@@ -137,6 +143,13 @@ void setup() {
   hostName = WiFi.getHostname();
   hostName.toLowerCase();
   ledSetup();
+
+  // Quiet Serial while waiting for Improv (no STA creds yet).
+  {
+    String ssid, pass;
+    if (!loadWiFiCredentials(ssid, pass))
+      logging_quiet_begin();
+  }
 
   // Read device role early
   is_broker_mode = DeviceConfig::isBrokerMode();
@@ -189,7 +202,12 @@ void setup() {
 }
 
 void loop() {
-  improvSerial.handleSerial();
+  // ImprovWiFi::handleSerial() reads one byte per call — drain the full
+  // RX buffer here. Never read Serial elsewhere (logging commands use
+  // WebSerial only); otherwise log polling steals IMPROV frame bytes and
+  // the client hangs on "Querying device".
+  while (Serial.available() > 0)
+    improvSerial.handleSerial();
 
   unsigned long now = millis();
   button_loop();

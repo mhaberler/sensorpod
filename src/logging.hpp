@@ -17,6 +17,13 @@ void logging_loop();
 // or NVS failure.
 bool logging_apply_level_name(const char *name);
 bool logging_apply_level(uint8_t level);
+// Runtime only (no NVS) — used for temporary Improv quiet window.
+void logging_set_level_runtime(uint8_t level);
+// Mute to NONE (RAM only) while Improv needs a clean Serial pipe; restore
+// later. Log commands stay on WebSerial — Serial RX is owned by Improv.
+void logging_quiet_begin();
+void logging_quiet_end();
+bool logging_is_quiet();
 const char *logging_level_name(uint8_t level);
 bool logging_parse_level(const char *name, uint8_t *out);
 uint8_t logging_current_level();
