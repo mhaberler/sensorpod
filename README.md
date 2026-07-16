@@ -27,12 +27,12 @@ SensorPod runs a local MQTT broker (PicoMQTT) which publishes sensor updates:
 
 The broker is reachable at:
 
-- `{hostname}.local` (e.g., `esp32c6-5B0A24.local`, resolved via mDNS — recommended for iOS)
+- `{hostname}.local` (e.g., `esp32c6-5b0a24.local`, resolved via mDNS — recommended for iOS)
 - `192.168.4.1` (when the mobile connects to SensorPod's own AP — recommended for Android)
 
 The broker starts at boot and runs on both the AP and the STA interface simultaneously, so it is reachable regardless of WiFi state.
 
-**All sensor topics are prefixed with the device hostname** (e.g., `esp32c6-5B0A24/VL53L0X`, `esp32c6-5B0A24/status`).
+**All sensor topics are prefixed with the device hostname** (e.g., `esp32c6-5b0a24/VL53L0X`, `esp32c6-5b0a24/status`).
 
 ### Client Mode (Optional)
 
@@ -49,13 +49,13 @@ SensorPod can be switched to Client mode via the web UI (`/`), where it discover
 
 ### mDNS Service Announcements (Broker Mode)
 
-In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The device hostname is derived from the MAC (e.g., `esp32c6-5B0A24`), and the following services are announced:
+In Broker mode, SensorPod advertises itself on both interfaces via mDNS. The device hostname is derived from the MAC (e.g., `esp32c6-5b0a24`), and the following services are announced:
 
-- **Host advertisement:** `esp32c6-5B0A24.local` (mDNS A/AAAA record)
+- **Host advertisement:** `esp32c6-5b0a24.local` (mDNS A/AAAA record)
 - **MQTT service:** `_mqtt._tcp.local` on port 1883
-    - Instance name: `esp32c6-5B0A24-TCP-083AF24483D8` (generated from hostname + MAC)
+    - Instance name: `esp32c6-5b0a24-TCP-083af24483d8` (generated from hostname + MAC)
 - **MQTT-WS service:** `_mqtt-ws._tcp.local` on port 8080 with TXT record `path=/mqtt`
-    - Instance name: `esp32c6-5B0A24-WS-083AF24483D8`
+    - Instance name: `esp32c6-5b0a24-WS-083af24483d8`
 - **HTTP service:** `_http._tcp.local` on port 80 (sysinfo web UI)
 - **Workstation:** `_workstation._tcp.local` (generic host advertisement)
 
@@ -164,7 +164,7 @@ Firmware updates work the same way: download the newer `sensorpod_<env>_firmware
 
 Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on port 80:
 
-- `http://{hostname}.local/` (mDNS — e.g., `http://esp32c6-5B0A24.local/` — recommended for iOS/macOS/Linux)
+- `http://{hostname}.local/` (mDNS — e.g., `http://esp32c6-5b0a24.local/` — recommended for iOS/macOS/Linux)
 - `http://192.168.4.1/` (when connected to SensorPod's own AP — recommended for Android)
 - `http://<STA-IP>/` (look up the IP on your router or in the serial log)
 
@@ -188,7 +188,7 @@ For SensorPod use the __Improv via Serial__ button.
 
 Connect to your devices` port and set SSID and password for your Access Point or Mobile hotspot..
 
-The device's own AP is named `{hostname}.local` (e.g., `esp32c6-5B0A24.local`, hostname derived from the MAC via `WiFi.getHostname()`) with PSK = the same `{hostname}.local` string. Using the `.local` mDNS name as the SSID means the SSID doubles as the device's hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
+The device's own AP is named `{hostname}.local` (e.g., `esp32c6-5b0a24.local`, hostname from `WiFi.getHostname()` then forced lowercase) with PSK = the same `{hostname}.local` string. Using the `.local` mDNS name as the SSID means the SSID doubles as the device's hostname. The AP is always up regardless of whether STA credentials are present. Once provisioned, the Arduino-ESP32 driver auto-reconnects if the upstream AP later drops.
 
 ### Erasing credentials
 
@@ -203,7 +203,7 @@ The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C b
 - `{hostname}/VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
 - `{hostname}/status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
 
-**Topic Prefixing:** All topics are automatically prefixed with the device's hostname for easy identification in multi-pod deployments. Example: `esp32c6-5B0A24/VL53L0X`, `esp32c6-5B0A24/status`.
+**Topic Prefixing:** All topics are automatically prefixed with the device's hostname for easy identification in multi-pod deployments. Example: `esp32c6-5b0a24/VL53L0X`, `esp32c6-5b0a24/status`.
 
 If no VL53L0X is detected at boot, polling is skipped and only the `status` topic publishes.
 
@@ -267,7 +267,7 @@ Key options in `platformio.ini`:
 -DMQTT_CONN_TOPIC_LEN=64
 ```
 
-Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`) via `WiFi.getHostname()`.
+Device hostname is auto-derived from the last 3 bytes of the MAC address via `WiFi.getHostname()`, then lowercased (e.g., `esp32c6-5b0a24`).
 
 `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
 
