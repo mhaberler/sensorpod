@@ -168,9 +168,17 @@ Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on p
 - `http://192.168.4.1/` (when connected to SensorPod's own AP — recommended for Android)
 - `http://<STA-IP>/` (look up the IP on your router or in the serial log)
 
-The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table, network state, BLE statistics, and announced mDNS services. `GET /data` returns the same as JSON.
+The root page shows firmware identity (version, build SHA, build date), chip info,
+heap/PSRAM, flash, the partition table, network state, BLE statistics, MQTT status,
+and announced mDNS services. `GET /data` returns the same as JSON.
 
-Log output goes to USB Serial and a browser console at `/webserial` (link on the sysinfo page). Runtime log level (none/error/warn/info/debug/verbose) is set on the sysinfo page or by typing `level debug` in WebSerial/USB; the setting is stored in NVS and applied immediately (no reboot).
+**Live updates:** every ~5 seconds the page polls `/data` and refreshes:
+
+- **Memory** — heap free / min-free (HWM) / max alloc, plus the free% bar (and PSRAM when present)
+- **BLE stats** — advertisements received, decoder counts, dedup drops, queue HWM / full
+- **MQTT** — aggregate counters; in broker mode also **listen endpoints** (AP/STA IP × TCP 1883 and WS 8080) and a **per-client connection list** (client id, remote IP, transport TCP|WS, subscribed topics) when `MQTT_CONN_TRACK` is enabled; in client mode the outbound broker host:port
+
+Log output goes to USB Serial and a browser console at `/webserial` (link on the sysinfo page). Runtime log level (none/error/warn/info/debug/verbose) is set on the sysinfo page or by typing `level debug` in WebSerial/USB; the setting is stored in NVS and applied immediately (no reboot). While Improv Serial provisioning needs a clean pipe, logging is temporarily muted to NONE (NVS preference preserved).
 
 ## WiFi provisioning
 
@@ -271,15 +279,16 @@ sensorpod/
 │   ├── main.cpp            # setup/loop, sensor polling, MQTT publish, button, mDNS discovery loop
 │   ├── wifisetup.cpp       # AP + STA + mDNS announcements
 │   ├── webserver.cpp       # HTTP server lifecycle, route registration
-│   ├── content.cpp         # HTML/JSON sysinfo generation
-│   ├── mqtt.cpp            # PicoMQTT broker (Broker mode)
+│   ├── content.cpp         # HTML/JSON sysinfo (+ live-update JS for mem/BLE/MQTT)
+│   ├── logging.hpp/cpp     # MycilaLogger + WebSerial; HAL log filter; Improv quiet
+│   ├── mqtt.cpp            # PicoMQTT broker + optional connection registry
 │   ├── mqtt_client.cpp     # PicoMQTT client wrapper (Client mode)
 │   ├── mdns_client.cpp     # mDNS discovery (async, non-blocking task)
 │   ├── mqtt_device.hpp     # Abstract MQTT interface (Broker/Client polymorphism)
 │   ├── BLEScanner.cpp/.h   # BLE scan task, dedup, decoder dispatch (Theengs/BTHome/custom/raw)
 │   ├── BLE.cpp             # scanner glue: drain queue, publish ble/<mac>
 │   ├── custom_decoder.cpp  # hand-written decoders (Mikrotik TG-BT5, Qingping)
-│   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, BLE options
+│   ├── deviceconfig.hpp    # NVS wrapper for role, broker, BLE options, log level
 │   ├── mdns_state.hpp      # mDNS service struct + externs
 │   ├── led.hpp/cpp         # LED status feedback
 │   ├── ota.cpp             # optional OTA web updater (off by default, gated on OTA_WEB_UPDATER)
@@ -296,6 +305,7 @@ Resolved automatically via `lib_deps` in `platformio.ini`:
 
 - **[ArduinoJson](https://github.com/bblanchon/ArduinoJson)** — JSON encoding for MQTT payloads
 - **[PicoMQTT](https://github.com/mlesniew/PicoMQTT)** + **[PicoWebsocket](https://github.com/mlesniew/PicoWebsocket)** — embedded broker + WS transport
+- **[MycilaLogger](https://github.com/mathieucarbou/MycilaLogger)** + **[MycilaWebSerial](https://github.com/mhaberler/MycilaWebSerial)** — leveled logging to Serial + `/webserial`
 - **[Improv-WiFi-Library](https://github.com/mhaberler/Improv-WiFi-Library)** — serial provisioning protocol
 - **[OneButton](https://github.com/mathertel/OneButton)** — debounced button + long-press detection
 - **[Adafruit_VL53L0X](https://github.com/adafruit/Adafruit_VL53L0X)** — time-of-flight distance sensor driver
