@@ -9,6 +9,7 @@
 #include "led.hpp"
 #include "listenv.hpp"
 #include "mqtt_device.hpp"
+#include "reset_reason.hpp"
 #include <ArduinoJson.h>
 #include <ImprovWiFiBLE.h>
 #include <ImprovWiFiLibrary.h>
@@ -131,6 +132,7 @@ void setup() {
   while (!Serial && millis() - serial_t0 < 1500) {
     delay(10);
   }
+  reset_reason_capture_and_log();
   listEnv();
   hostName = WiFi.getHostname();
   hostName.toLowerCase();

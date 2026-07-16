@@ -15,6 +15,7 @@
 #include "mdns_state.hpp"
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
+#include "reset_reason.hpp"
 
 #if __has_include("build_info.hpp")
 #include "build_info.hpp"
@@ -436,6 +437,7 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>Arduino: %s</li>", ESP_ARDUINO_VERSION_STR);
   appendf(out, "<li>IDF: %s</li>", esp_app_get_description()->idf_ver);
   appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
+  appendf(out, "<li>Reset reason: %s</li>", reset_reason_name());
   appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
 
 #ifdef OTA_WEB_UPDATER
@@ -565,6 +567,8 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_str(out, "build_framework", BUILD_FRAMEWORK, first);
 #endif
   json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
+  json_kv_str(out, "reset_reason", reset_reason_name(), first);
+  json_kv_u(out, "reset_reason_code", (uint32_t)reset_reason_code(), first);
   json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
   json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
 #ifdef SGO_DEFAULT_OWNER
