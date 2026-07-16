@@ -251,6 +251,12 @@ Key options in `platformio.ini`:
 -DCORE_DEBUG_LEVEL=4    # 0=none, 5=verbose (debug/default env uses 4, release uses 2)
 -DMQTT_PORT=1883
 -DMQTTWS_PORT=8080
+# Broker connection listing (sysinfo). RAM ≈ clients*(id + topics*len).
+# Omit [mqtt-conn-track] or set TRACK=0 on tight boards.
+-DMQTT_CONN_TRACK=1
+-DMQTT_CONN_MAX_CLIENTS=8
+-DMQTT_CONN_MAX_TOPICS=16
+-DMQTT_CONN_TOPIC_LEN=64
 ```
 
 Device hostname is auto-derived from the last 3 bytes of the MAC address (e.g., `esp32c6-5B0A24`) via `WiFi.getHostname()`.

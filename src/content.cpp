@@ -44,7 +44,8 @@ int wifi_ap_channel();
 uint8_t safe_ap_station_num();
 
 static void appendf(String &out, const char *fmt, ...) {
-  char buf[160];
+  // Keep room for long JSON fragments (ble_stats, listen entries, …).
+  char buf[384];
   va_list ap;
   va_start(ap, fmt);
   vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -354,9 +355,79 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "function clearBleStats(){"
       "fetch('/api/"
       "clear-ble-stats',{method:'POST'})"
-      ".then(r=>r.json()).then(d=>{location.reload()})"
+      ".then(r=>r.json()).then(d=>{refreshLiveStats()})"
       ".catch(e=>alert('Error: '+e))}"
-      "window.addEventListener('load',loadBrokers);"
+      "function esc(s){return String(s==null?'':s).replace(/[&<>\"']/g,c=>({"
+      "'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]))}"
+      "function updateBleStats(bs){if(!bs)return;"
+      "var set=function(id,v){var e=document.getElementById(id);if(e)e."
+      "textContent=v;};"
+      "set('ble-received',bs.received);"
+      "set('ble-theengs',bs.decoded_theengs);"
+      "set('ble-bthome',bs.decoded_bthome);"
+      "set('ble-custom',bs.decoded_custom);"
+      "set('ble-raw',bs.raw_ads);"
+      "set('ble-dedup',bs.dedup_drops);"
+      "set('ble-hwm',(bs.hwm_bytes||0)+'/'+(bs.total_bytes||0)+' ('+(bs."
+      "hwm_percent||0)+'%)');"
+      "set('ble-queue',(bs.queue_full||0)+', acquire failed: '+(bs."
+      "acquire_fail||0));"
+      "}"
+      "function updateMqtt(m){if(!m)return;"
+      "var sum=document.getElementById('mqtt-summary');"
+      "if(sum){var h='';"
+      "if(m.mode==='broker'){"
+      "h+='<li>Status: running</li>';"
+      "h+='<li>Clients connected: '+(m.clients||0)+'</li>';"
+      "h+='<li>Subscriptions: '+(m.subscriptions||0)+'</li>';"
+      "h+='<li>Messages routed: '+(m.messages_routed||0)+'</li>';"
+      "}else{"
+      "h+='<li>Status: '+(m.connected?'connected':'disconnected')+'</li>';"
+      "if(m.connected_for_s!=null)h+='<li>Connected for: '+m.connected_for_s+"
+      "'s</li>';"
+      "h+='<li>Reconnects: '+(m.reconnects||0)+'</li>';"
+      "h+='<li>Messages sent: '+(m.messages_sent||0)+'</li>';"
+      "h+='<li>Messages failed: '+(m.messages_failed||0)+'</li>';"
+      "if(m.outbound){h+='<li>Broker: '+esc(m.outbound.host)+':'+m.outbound."
+      "port+' ('+esc(m.outbound.transport)+')</li>';}"
+      "}"
+      "sum.innerHTML=h;}"
+      "var listen=document.getElementById('mqtt-listen');"
+      "if(listen){if(m.listen&&m.listen.length){var "
+      "lh='<p><strong>Listen</strong></p><ul>';"
+      "m.listen.forEach(function(e){lh+='<li>'+esc(e.iface)+' "
+      "'+esc(e.ip)+':'+e."
+      "port+' '+esc(e.transport)+'</li>';});"
+      "lh+='</ul>';listen.innerHTML=lh;}else{listen.innerHTML='';}}"
+      "var detail=document.getElementById('mqtt-detail');"
+      "if(detail){if(m.connections){if(m.connections.length===0){detail."
+      "innerHTML='<p><strong>Connections</strong></p><p><small>None</small></"
+      "p>';}"
+      "else{var dh='<p><strong>Connections</strong></p><ul>';"
+      "m.connections.forEach(function(c){dh+='<li><code>'+esc(c.client_id)+'"
+      "</code> '+esc(c.ip)+' '+esc(c.transport);"
+      "if(c.topics&&c.topics.length){dh+='<ul>';c.topics.forEach(function(t){"
+      "dh+='<li><code>'+esc(t)+'</code></li>';});dh+='</ul>';}"
+      "dh+='</li>';});dh+='</ul>';detail.innerHTML=dh;}}"
+      "else{detail.innerHTML='';}}"
+      "}"
+      "function refreshLiveStats(){"
+      "fetch('/data').then(r=>r.json()).then(d=>{"
+      "updateBleStats(d.ble_stats);updateMqtt(d.mqtt);"
+      "var sel=document.getElementById('brokerSelect');"
+      "if(sel){var brokers=d.discovered_brokers||[];"
+      "if(brokers.length===0){sel.innerHTML='<option>No brokers found (scan "
+      "every 10s)</option>';}"
+      "else{var cur=sel.value;sel.innerHTML='';"
+      "brokers.forEach(b=>{var "
+      "opt=document.createElement('option');opt.value=b.hostname;opt."
+      "textContent=b.instance+' ('+b.ip+':'+b.port+')';sel.appendChild(opt);});"
+      "if(cur)sel.value=cur;}"
+      "}"
+      "}).catch(e=>console.error('live stats:',e))"
+      "}"
+      "window.addEventListener('load',function(){refreshLiveStats();"
+      "setInterval(refreshLiveStats,5000);});"
       "</script></div>";
 
   out += "<h3>Network</h3><ul>";
@@ -393,23 +464,33 @@ void sysinfo_html(String &out, bool is_broker_mode) {
 
   {
     BLEScanner::Stats bs = BLEScanner::instance().stats();
-    out += "<h3>BLE</h3><ul>";
-    appendf(out, "<li>Advertisements received: %u</li>", bs.received);
-    appendf(out, "<li>Decoded (Theengs): %u</li>", bs.decodedTheengs);
-    appendf(out, "<li>Decoded (BTHomeV2): %u</li>", bs.decodedBTHome);
-    appendf(out, "<li>Decoded (custom): %u</li>", bs.decodedCustom);
-    appendf(out, "<li>Raw (undecoded): %u</li>", bs.rawAds);
-    appendf(out, "<li>Dedup drops: %u</li>", bs.dedupDrops);
-    appendf(out, "<li>Queue HWM: %u/%u (%u%%)</li>", (unsigned)bs.hwmBytes,
-            (unsigned)bs.totalBytes, bs.hwmPercent);
-    appendf(out, "<li>Queue full: %u, acquire failed: %u</li>", bs.queueFull,
-            bs.acquireFail);
+    out += "<h3>BLE</h3><ul id='ble-stats'>";
+    appendf(out,
+            "<li>Advertisements received: <span "
+            "id='ble-received'>%u</span></li>",
+            bs.received);
+    appendf(out, "<li>Decoded (Theengs): <span id='ble-theengs'>%u</span></li>",
+            bs.decodedTheengs);
+    appendf(out, "<li>Decoded (BTHomeV2): <span id='ble-bthome'>%u</span></li>",
+            bs.decodedBTHome);
+    appendf(out, "<li>Decoded (custom): <span id='ble-custom'>%u</span></li>",
+            bs.decodedCustom);
+    appendf(out, "<li>Raw (undecoded): <span id='ble-raw'>%u</span></li>",
+            bs.rawAds);
+    appendf(out, "<li>Dedup drops: <span id='ble-dedup'>%u</span></li>",
+            bs.dedupDrops);
+    appendf(out, "<li>Queue HWM: <span id='ble-hwm'>%u/%u (%u%%)</span></li>",
+            (unsigned)bs.hwmBytes, (unsigned)bs.totalBytes, bs.hwmPercent);
+    appendf(out,
+            "<li>Queue full: <span id='ble-queue'>%u, acquire failed: "
+            "%u</span></li>",
+            bs.queueFull, bs.acquireFail);
     out += "</ul>";
     out += "<button type='button' class='config-btn' "
            "onclick='clearBleStats()'>Clear BLE stats</button>";
   }
 
-  out += "<h3>MQTT</h3><ul>";
+  out += "<h3>MQTT</h3><ul id='mqtt-summary'>";
   if (is_broker_mode) {
     out += "<li>Status: running</li>";
     appendf(out, "<li>Clients connected: %d</li>", mqtt_broker.client_count);
@@ -425,8 +506,36 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<li>Reconnects: %u</li>", mqtt_client.total_reconnects);
     appendf(out, "<li>Messages sent: %u</li>", mqtt_client.messages_sent);
     appendf(out, "<li>Messages failed: %u</li>", mqtt_client.messages_failed);
+    appendf(out, "<li>Broker: %s:%u (TCP)</li>",
+            mqtt_client.broker_host().length()
+                ? mqtt_client.broker_host().c_str()
+                : "(none)",
+            (unsigned)mqtt_client.broker_port());
   }
   out += "</ul>";
+  out += "<div id='mqtt-listen'>";
+  if (is_broker_mode) {
+    out += "<p><strong>Listen</strong></p><ul>";
+    auto add_listen_html = [&](const char *iface, const IPAddress &ip) {
+      if ((uint32_t)ip == 0)
+        return;
+      appendf(out, "<li>%s %s:%u TCP</li>", iface, ip.toString().c_str(),
+              (unsigned)MQTT_PORT);
+      appendf(out, "<li>%s %s:%u WS</li>", iface, ip.toString().c_str(),
+              (unsigned)MQTTWS_PORT);
+    };
+    add_listen_html("AP", WiFi.softAPIP());
+    add_listen_html("STA", WiFi.localIP());
+    out += "</ul>";
+  }
+  out += "</div><div id='mqtt-detail'>";
+#if MQTT_CONN_TRACK
+  if (is_broker_mode) {
+    out += "<p><strong>Connections</strong></p>"
+           "<p><small>Updating…</small></p>";
+  }
+#endif
+  out += "</div>";
 
   out += "<h3>Identity</h3><ul>";
   appendf(out, "<li>FW: %s</li>", FW_VERSION);
@@ -717,13 +826,63 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   if (!first)
     out += ',';
   first = false;
+  {
+    BLEScanner::Stats bs = BLEScanner::instance().stats();
+    // Build in pieces — avoid a single appendf overflow truncating /data JSON.
+    out += "\"ble_stats\":{";
+    appendf(out, "\"received\":%u,", bs.received);
+    appendf(out, "\"decoded_theengs\":%u,", bs.decodedTheengs);
+    appendf(out, "\"decoded_bthome\":%u,", bs.decodedBTHome);
+    appendf(out, "\"decoded_custom\":%u,", bs.decodedCustom);
+    appendf(out, "\"raw_ads\":%u,", bs.rawAds);
+    appendf(out, "\"dedup_drops\":%u,", bs.dedupDrops);
+    appendf(out, "\"hwm_bytes\":%u,", (unsigned)bs.hwmBytes);
+    appendf(out, "\"total_bytes\":%u,", (unsigned)bs.totalBytes);
+    appendf(out, "\"hwm_percent\":%u,", bs.hwmPercent);
+    appendf(out, "\"queue_full\":%u,", bs.queueFull);
+    appendf(out, "\"acquire_fail\":%u", bs.acquireFail);
+    out += '}';
+  }
+
+  if (!first)
+    out += ',';
+  first = false;
   out += "\"mqtt\":{";
   if (is_broker_mode) {
-    appendf(out, "\"clients\":%d,\"subscriptions\":%d,\"messages_routed\":%d",
+    appendf(out,
+            "\"mode\":\"broker\",\"clients\":%d,\"subscriptions\":%d,"
+            "\"messages_routed\":%d",
             mqtt_broker.client_count, mqtt_broker.subscribed,
             mqtt_broker.messages);
+    out += ",\"listen\":[";
+    {
+      bool lf = true;
+      auto add_listen = [&](const char *iface, const IPAddress &ip) {
+        if ((uint32_t)ip == 0)
+          return;
+        if (!lf)
+          out += ',';
+        lf = false;
+        appendf(out,
+                "{\"iface\":\"%s\",\"ip\":\"%s\",\"transport\":\"TCP\","
+                "\"port\":%u}",
+                iface, ip.toString().c_str(), (unsigned)MQTT_PORT);
+        out += ',';
+        appendf(out,
+                "{\"iface\":\"%s\",\"ip\":\"%s\",\"transport\":\"WS\","
+                "\"port\":%u}",
+                iface, ip.toString().c_str(), (unsigned)MQTTWS_PORT);
+      };
+      add_listen("AP", WiFi.softAPIP());
+      add_listen("STA", WiFi.localIP());
+    }
+    out += ']';
+#if MQTT_CONN_TRACK
+    out += ",\"connections\":";
+    mqtt_conn_append_json(out);
+#endif
   } else {
-    appendf(out, "\"connected\":%s",
+    appendf(out, "\"mode\":\"client\",\"connected\":%s",
             mqtt_client.connected() ? "true" : "false");
     if (mqtt_client.connected_since_ms > 0)
       appendf(out, ",\"connected_for_s\":%lu",
@@ -733,6 +892,11 @@ void sysinfo_json(String &out, bool is_broker_mode) {
             ",\"reconnects\":%u,\"messages_sent\":%u,\"messages_failed\":%u",
             mqtt_client.total_reconnects, mqtt_client.messages_sent,
             mqtt_client.messages_failed);
+    out += ",\"outbound\":{";
+    appendf(out, "\"host\":\"%s\",\"port\":%u,\"transport\":\"TCP\"",
+            mqtt_client.broker_host().c_str(),
+            (unsigned)mqtt_client.broker_port());
+    out += '}';
   }
   out += '}';
   out += '}';

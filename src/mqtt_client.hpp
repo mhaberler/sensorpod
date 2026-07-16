@@ -13,6 +13,9 @@ public:
   void connect(const char *host, uint16_t port = 1883);
   String client_id;
 
+  const String &broker_host() const { return pending_host; }
+  uint16_t broker_port() const { return pending_port; }
+
   unsigned long connected_since_ms = 0;
   unsigned int total_reconnects = 0;
   uint32_t messages_sent = 0;
