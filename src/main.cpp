@@ -243,6 +243,7 @@ void loop() {
     doc["uptime"] = now / 1000;
     doc["cpu_temperature"] = temperatureRead();
     doc["rssi"] = WiFi.RSSI();
+    doc["loopstack_hwm"] = uxTaskGetStackHighWaterMark(NULL);
     if (numClicks) {
       doc["clicks"] = numClicks;
       numClicks = 0;

@@ -12,6 +12,19 @@ def manifest_version(name):
             return (lb._manifest or {}).get("version")
     return None
 
+def properties_version(name):
+    # Fallback when only library.properties exists (no library.json).
+    path = os.path.join(env.subst("$PROJECT_LIBDEPS_DIR"),
+                        env.subst("$PIOENV"), name, "library.properties")
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith("version="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
 def git_sha(name):
     path = os.path.join(env.subst("$PROJECT_LIBDEPS_DIR"),
                         env.subst("$PIOENV"), name)
@@ -36,7 +49,8 @@ if macros is None:
     macros = {}
 
 for name in libs:
-    ver = manifest_version(name) or git_sha(name) or "unknown"
+    ver = (manifest_version(name) or properties_version(name) or
+           git_sha(name) or "unknown")
     macros[macro_name(name)] = ver
     print(f"inject_lib_versions: {macro_name(name)}={ver}")
 

@@ -63,4 +63,11 @@ void listEnv() {
 #ifdef BUILD_FIRMWARE_URI
   log_i("BUILD_FIRMWARE_URI: %s", BUILD_FIRMWARE_URI);
 #endif
+
+#ifdef THEENGSDECODER_VERSION
+  log_i("TheengsDecoder:    %s", THEENGSDECODER_VERSION);
+#endif
+#ifdef BTHOMEDECODER_VERSION
+  log_i("BTHomeDecoder:     %s", BTHOMEDECODER_VERSION);
+#endif
 }

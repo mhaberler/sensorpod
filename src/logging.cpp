@@ -60,9 +60,12 @@ static uint8_t level_from_arduino_line(const char *line) {
 static void hal_log_char_filtered(char c) {
   if (halLogBusy)
     return;
-  if (halLineLen + 1 < sizeof(halLineBuf))
+  // Leave one byte for the NUL used by level_from_arduino_line().
+  constexpr size_t kCap = sizeof(halLineBuf) - 1;
+  if (halLineLen < kCap)
     halLineBuf[halLineLen++] = c;
-  if (c != '\n' && halLineLen + 1 < sizeof(halLineBuf))
+  // Flush on newline or when the payload area is full (truncated line).
+  if (c != '\n' && halLineLen < kCap)
     return;
 
   halLineBuf[halLineLen] = '\0';

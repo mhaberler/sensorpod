@@ -482,6 +482,49 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   }
   out += "</li></ul>";
 
+  out += "<h3>Memory</h3><ul id='mem-stats'>";
+  {
+    uint32_t heap_total = ESP.getHeapSize();
+    uint32_t heap_free = ESP.getFreeHeap();
+    uint32_t heap_min_free = ESP.getMinFreeHeap();
+    unsigned pct_free =
+        heap_total ? (unsigned)(100ULL * heap_free / heap_total) : 0;
+    unsigned hwm_pct =
+        heap_total ? (unsigned)(100ULL * heap_min_free / heap_total) : 0;
+    appendf(out, "<li>Heap total: <span id='mem-heap-total'>%u</span></li>",
+            (unsigned)heap_total);
+    appendf(out,
+            "<li>Heap free: <span id='mem-heap-free'>%u (%u%% free)</span>",
+            (unsigned)heap_free, pct_free);
+    appendf(out,
+            " <span class='barwrap'><progress id='mem-heap-bar' value='%u' "
+            "max='100'></progress><span id='mem-heap-tick' class='tick' "
+            "style='left:%u%%'></span></span></li>",
+            pct_free, hwm_pct);
+    appendf(out,
+            "<li>Heap min free (HWM): <span id='mem-heap-min'>%u</span></li>",
+            (unsigned)heap_min_free);
+    appendf(out,
+            "<li>Heap max alloc: <span id='mem-heap-maxalloc'>%u</span></li>",
+            (unsigned)ESP.getMaxAllocHeap());
+  }
+  if (psramFound()) {
+    uint32_t psram_total = ESP.getPsramSize();
+    uint32_t psram_free = ESP.getFreePsram();
+    unsigned psram_pct_free =
+        psram_total ? (unsigned)(100ULL * psram_free / psram_total) : 0;
+    appendf(out, "<li>PSRAM size: <span id='mem-psram-total'>%u</span></li>",
+            (unsigned)psram_total);
+    appendf(out,
+            "<li>PSRAM free: <span id='mem-psram-free'>%u (%u%% free)</span>",
+            (unsigned)psram_free, psram_pct_free);
+    appendf(out,
+            " <progress id='mem-psram-bar' value='%u' "
+            "max='100'></progress></li>",
+            psram_pct_free);
+  }
+  out += "</ul>";
+
   {
     BLEScanner::Stats bs = BLEScanner::instance().stats();
     out += "<h3>BLE</h3><ul id='ble-stats'>";
@@ -594,6 +637,33 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
   appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
 
+  out += "<h3>Libraries</h3><ul>";
+#ifdef THEENGSDECODER_VERSION
+  appendf(out, "<li>TheengsDecoder: %s</li>", THEENGSDECODER_VERSION);
+#endif
+#ifdef BTHOMEDECODER_VERSION
+  appendf(out, "<li>BTHomeDecoder: %s</li>", BTHOMEDECODER_VERSION);
+#endif
+#ifdef IMPROV_WIFI_LIBRARY_VERSION
+  appendf(out, "<li>Improv WiFi: %s</li>", IMPROV_WIFI_LIBRARY_VERSION);
+#endif
+#ifdef ONEBUTTON_VERSION
+  appendf(out, "<li>OneButton: %s</li>", ONEBUTTON_VERSION);
+#endif
+#ifdef ARDUINOJSON_VERSION
+  appendf(out, "<li>ArduinoJson: %s</li>", ARDUINOJSON_VERSION);
+#endif
+#ifdef ADAFRUIT_VL53L0X_VERSION
+  appendf(out, "<li>Adafruit_VL53L0X: %s</li>", ADAFRUIT_VL53L0X_VERSION);
+#endif
+#ifdef PICOMQTT_VERSION
+  appendf(out, "<li>PicoMQTT: %s</li>", PICOMQTT_VERSION);
+#endif
+#ifdef PICOWEBSOCKET_VERSION
+  appendf(out, "<li>PicoWebsocket: %s</li>", PICOWEBSOCKET_VERSION);
+#endif
+  out += "</ul>";
+
 #ifdef OTA_WEB_UPDATER
   out += "<h3>SafeGithubOTA</h3><ul>";
 #ifdef SGO_DEFAULT_OWNER
@@ -613,49 +683,6 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>Cores: %u</li>", ESP.getChipCores());
   appendf(out, "<li>Rev: %u</li>", ESP.getChipRevision());
   appendf(out, "<li>CPU: %u MHz</li></ul>", (unsigned)ESP.getCpuFreqMHz());
-
-  out += "<h3>Memory</h3><ul id='mem-stats'>";
-  {
-    uint32_t heap_total = ESP.getHeapSize();
-    uint32_t heap_free = ESP.getFreeHeap();
-    uint32_t heap_min_free = ESP.getMinFreeHeap();
-    unsigned pct_free =
-        heap_total ? (unsigned)(100ULL * heap_free / heap_total) : 0;
-    unsigned hwm_pct =
-        heap_total ? (unsigned)(100ULL * heap_min_free / heap_total) : 0;
-    appendf(out, "<li>Heap total: <span id='mem-heap-total'>%u</span></li>",
-            (unsigned)heap_total);
-    appendf(out,
-            "<li>Heap free: <span id='mem-heap-free'>%u (%u%% free)</span>",
-            (unsigned)heap_free, pct_free);
-    appendf(out,
-            " <span class='barwrap'><progress id='mem-heap-bar' value='%u' "
-            "max='100'></progress><span id='mem-heap-tick' class='tick' "
-            "style='left:%u%%'></span></span></li>",
-            pct_free, hwm_pct);
-    appendf(out,
-            "<li>Heap min free (HWM): <span id='mem-heap-min'>%u</span></li>",
-            (unsigned)heap_min_free);
-    appendf(out,
-            "<li>Heap max alloc: <span id='mem-heap-maxalloc'>%u</span></li>",
-            (unsigned)ESP.getMaxAllocHeap());
-  }
-  if (psramFound()) {
-    uint32_t psram_total = ESP.getPsramSize();
-    uint32_t psram_free = ESP.getFreePsram();
-    unsigned psram_pct_free =
-        psram_total ? (unsigned)(100ULL * psram_free / psram_total) : 0;
-    appendf(out, "<li>PSRAM size: <span id='mem-psram-total'>%u</span></li>",
-            (unsigned)psram_total);
-    appendf(out,
-            "<li>PSRAM free: <span id='mem-psram-free'>%u (%u%% free)</span>",
-            (unsigned)psram_free, psram_pct_free);
-    appendf(out,
-            " <progress id='mem-psram-bar' value='%u' "
-            "max='100'></progress></li>",
-            psram_pct_free);
-  }
-  out += "</ul>";
 
   out += "<h3>Flash</h3><ul>";
   appendf(out, "<li>Flash size: %u</li>", (unsigned)ESP.getFlashChipSize());
@@ -733,6 +760,30 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
   json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
   json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
+#ifdef THEENGSDECODER_VERSION
+  json_kv_str(out, "lib_theengsdecoder", THEENGSDECODER_VERSION, first);
+#endif
+#ifdef BTHOMEDECODER_VERSION
+  json_kv_str(out, "lib_bthomedecoder", BTHOMEDECODER_VERSION, first);
+#endif
+#ifdef IMPROV_WIFI_LIBRARY_VERSION
+  json_kv_str(out, "lib_improv_wifi", IMPROV_WIFI_LIBRARY_VERSION, first);
+#endif
+#ifdef ONEBUTTON_VERSION
+  json_kv_str(out, "lib_onebutton", ONEBUTTON_VERSION, first);
+#endif
+#ifdef ARDUINOJSON_VERSION
+  json_kv_str(out, "lib_arduinojson", ARDUINOJSON_VERSION, first);
+#endif
+#ifdef ADAFRUIT_VL53L0X_VERSION
+  json_kv_str(out, "lib_adafruit_vl53l0x", ADAFRUIT_VL53L0X_VERSION, first);
+#endif
+#ifdef PICOMQTT_VERSION
+  json_kv_str(out, "lib_picomqtt", PICOMQTT_VERSION, first);
+#endif
+#ifdef PICOWEBSOCKET_VERSION
+  json_kv_str(out, "lib_picowebsocket", PICOWEBSOCKET_VERSION, first);
+#endif
 #ifdef SGO_DEFAULT_OWNER
   json_kv_str(out, "sgo_owner", SGO_DEFAULT_OWNER, first);
 #endif
