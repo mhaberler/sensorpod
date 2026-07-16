@@ -306,10 +306,12 @@ Resolved automatically via `lib_deps` in `platformio.ini`:
 - **[ArduinoJson](https://github.com/bblanchon/ArduinoJson)** — JSON encoding for MQTT payloads
 - **[PicoMQTT](https://github.com/mlesniew/PicoMQTT)** + **[PicoWebsocket](https://github.com/mlesniew/PicoWebsocket)** — embedded broker + WS transport
 - **[MycilaLogger](https://github.com/mathieucarbou/MycilaLogger)** + **[MycilaWebSerial](https://github.com/mhaberler/MycilaWebSerial)** — leveled logging to Serial + `/webserial`
+- **[Theengs Decoder](https://github.com/theengs/decoder)** — BLE advertisement device database / JSON decode path
+- **[BTHomeDecoder](https://github.com/mhaberler/BTHomeDecoder)** (`arduino-lib` branch) — BTHome v2 decode (optional AES)
 - **[Improv-WiFi-Library](https://github.com/mhaberler/Improv-WiFi-Library)** — serial provisioning protocol
 - **[OneButton](https://github.com/mathertel/OneButton)** — debounced button + long-press detection
 - **[Adafruit_VL53L0X](https://github.com/adafruit/Adafruit_VL53L0X)** — time-of-flight distance sensor driver
 
 ## License
 
-MIT
+[GNU General Public License v3.0](LICENSE) (GPLv3)
