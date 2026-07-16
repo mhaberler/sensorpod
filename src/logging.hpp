@@ -10,6 +10,9 @@ extern Mycila::Logger logger;
 extern WebSerial webSerial;
 
 void logging_setup();
+// Call immediately after Serial / M5.begin — non-blocking CDC TX + drop
+// unfiltered putc2 before any HAL log can wedge a headless USB host.
+void logging_cdc_harden();
 void logging_begin(WebServer &server);
 void logging_loop();
 

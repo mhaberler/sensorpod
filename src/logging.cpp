@@ -113,6 +113,28 @@ static void install_hal_log_filter() {
   ets_install_putc2(NULL);
 }
 
+void logging_cdc_harden() {
+  // TinyUSB USBCDC and HWCDC both expose these. Safe before/after begin():
+  // setTxTimeoutMs only updates the timeout static/member.
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  Serial.setTxTimeoutMs(0);
+  // Framework begin() may install unfiltered putc2; kill it and keep it off.
+  Serial.setDebugOutput(false);
+#endif
+  ets_install_putc2(NULL);
+}
+
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+// Best-effort: run as soon as this TU's static ctors run (after USBSerial
+// exists). setup() still re-hardens around M5.begin.
+namespace {
+struct EarlyCdcHarden {
+  EarlyCdcHarden() { logging_cdc_harden(); }
+};
+static EarlyCdcHarden early_cdc_harden;
+} // namespace
+#endif
+
 const char *logging_level_name(uint8_t level) {
   for (const LogLevelEntry &entry : kLogLevels) {
     if (entry.level == level)

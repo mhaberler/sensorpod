@@ -121,27 +121,21 @@ static String resolve_broker_host(const String &host) {
 }
 
 void setup() {
+  // Own Serial before anything else. TinyUSB path may already have begun it
+  // from CDC_ON_BOOT; calling begin again is fine. Harden BEFORE M5 — M5 with
+  // serial_baudrate!=0 used to Serial.begin at default TX timeout and could
+  // wedge headless CDC during its own init logs.
+  Serial.begin(115200);
+  logging_cdc_harden();
+
 #if defined(HAS_M5UNIFIED)
   auto cfg = M5.config();
   cfg.output_power = true;
-  cfg.serial_baudrate = 115200;
+  cfg.serial_baudrate = 0; // we already started Serial; don't let M5 redo it
   M5.begin(cfg);
-  // M5.Ex_I2C.begin();
-  // Wire.end();
-  // Wire.begin(M5.Ex_I2C.getSDA(), M5.Ex_I2C.getSCL(), 100000);
-#else
-  Serial.begin(115200);
+  logging_cdc_harden(); // M5/libs may re-enable setDebugOutput(putc2)
 #endif
-  // USB-Serial/JTAG (C6/H2/P4) blocks TX until a host attaches; wait briefly
-  // so early logs are visible when a terminal is present, but boot headless.
-  unsigned long serial_t0 = millis();
-  while (!Serial && millis() - serial_t0 < 1500) {
-    delay(10);
-  }
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  // Don't stall the app when CDC TX backs up with no host attached.
-  Serial.setTxTimeoutMs(0);
-#endif
+
   logging_setup();
   listEnv();
   hostName = WiFi.getHostname();

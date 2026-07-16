@@ -145,12 +145,16 @@ pio run -e m5stack-nanoc6 -t upload -t monitor
 pio run -e m5stack-nanoc6 -t firmware
 ```
 
-On the USB-Serial/JTAG boards (C6/H2/P4/C5), `Serial` is the native USB
-peripheral. The firmware boots headless — it waits at most ~1.5s for a host
-to attach, then proceeds regardless — so it runs fine on battery with no
-cable. The monitor no longer resets the board on connect (`monitor_rts/dtr=0`),
-so to catch the boot banner open the monitor within ~1.5s of resetting, or
-flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
+On USB CDC boards the firmware boots headless: `Serial.setTxTimeoutMs(0)` and
+`setDebugOutput(false)` run before `M5.begin` / app logs, and HAL `putc2` is
+cleared so CDC TX cannot block when no host is attached.
+
+- **ESP32-S3 AtomS3 family:** TinyUSB OTG CDC (`ARDUINO_USB_CDC_ON_BOOT=1`,
+  no `ARDUINO_USB_MODE` — HWCDC mode fails to boot on USB power-only).
+- **C6/H2/P4/C5:** hardware USB-Serial/JTAG (`ARDUINO_USB_MODE=1`).
+
+Open the monitor anytime after boot (or `pio run -e <env> -t upload -t monitor`).
+`monitor_rts/dtr=0` so connecting the monitor does not reset the board.
 
 ## Pre-built firmware & updates
 
