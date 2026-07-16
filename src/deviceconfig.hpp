@@ -219,3 +219,5 @@ extern volatile uint8_t ble_decoder_mode;  // DeviceConfig::BleDecoder
 extern volatile bool ble_retain_undecoded; // publish raw when decoder skips
 extern volatile bool ble_dedup_enabled;    // dedupe in scan callback
 extern volatile uint32_t ble_dedup_age;    // seconds
+// Runtime only (not NVS): heap watchdog temporarily forces dedup off.
+extern volatile bool ble_dedup_suspended;

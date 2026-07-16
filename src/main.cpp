@@ -51,6 +51,7 @@ volatile uint8_t ble_decoder_mode = DeviceConfig::BLE_DECODER_THEENGS;
 volatile bool ble_retain_undecoded = false;
 volatile bool ble_dedup_enabled = true;
 volatile uint32_t ble_dedup_age = 1;
+volatile bool ble_dedup_suspended = false;
 static bool ble_scan_enabled = true; // boot-time gate, restart to change
 // True while an Improv provisioning connect is in progress, so the STA
 // reconnect watchdog in wifisetup.cpp stays out of Improv's way.
@@ -233,6 +234,29 @@ void loop() {
   // hosted_update_in_progress).
   if (!hosted_update_busy() && now - lastStatusPublish > 1000) {
     lastStatusPublish = now;
+
+    // Heap watchdog: suspend BLE dedup (runtime only, not NVS) under
+    // pressure so the scan-task map can be freed. Hysteresis avoids flap.
+    {
+      const uint32_t free_h = ESP.getFreeHeap();
+      const uint32_t max_a = ESP.getMaxAllocHeap();
+      constexpr uint32_t kSuspendFree = 24576;
+      constexpr uint32_t kSuspendMaxAlloc = 20480;
+      constexpr uint32_t kResumeFree = 40960;
+      constexpr uint32_t kResumeMaxAlloc = 28672;
+      const bool pressure = free_h < kSuspendFree || max_a < kSuspendMaxAlloc;
+      const bool recovered = free_h > kResumeFree && max_a > kResumeMaxAlloc;
+      if (pressure && !ble_dedup_suspended) {
+        ble_dedup_suspended = true;
+        log_w("BLE dedup suspended (heap pressure): free=%u max_alloc=%u",
+              (unsigned)free_h, (unsigned)max_a);
+      } else if (ble_dedup_suspended && recovered) {
+        ble_dedup_suspended = false;
+        log_i("BLE dedup resumed (heap recovered): free=%u max_alloc=%u",
+              (unsigned)free_h, (unsigned)max_a);
+      }
+    }
+
     JsonDocument doc;
     doc["uptime"] = now / 1000;
     doc["cpu_temperature"] = temperatureRead();

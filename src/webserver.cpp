@@ -31,7 +31,7 @@ void webserver_setup() {
   http_server.on("/", HTTP_GET, []() {
     log_request();
     String body;
-    body.reserve(4096);
+    body.reserve(18432);
     sysinfo_html(body, is_broker_mode);
     http_server.sendHeader("Connection", "close");
     http_server.sendHeader("Cache-Control", "no-store");

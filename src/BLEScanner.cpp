@@ -158,11 +158,15 @@ static int64_t dedup_last_sweep_us = 0;
 
 // Returns true if this advertisement is a young duplicate and should be
 // dropped. Also maintains the map (insert/update, periodic age-out).
+static void freeDedupMap() {
+  if (!dedup_map.empty())
+    std::map<std::string, DedupEntry>().swap(dedup_map);
+}
+
 static bool dedupDrop(const std::string &mac, const uint8_t *payload,
                       size_t payloadLen) {
-  if (!ble_dedup_enabled) {
-    if (!dedup_map.empty())
-      dedup_map.clear();
+  if (!ble_dedup_enabled || ble_dedup_suspended) {
+    freeDedupMap();
     return false;
   }
 
@@ -289,7 +293,11 @@ static void scanTask(void *param) {
     BLEScanResults *foundDevices =
         impl->pBLEScan->start(impl->scanTimeMs / 1000, false);
     // log_i("Devices found: %d", foundDevices->getCount());
+    (void)foundDevices;
     impl->pBLEScan->clearResults();
+    // Free map from this task (sole owner) when dedup is off or suspended.
+    if (!ble_dedup_enabled || ble_dedup_suspended)
+      freeDedupMap();
     delay(1);
   }
 }

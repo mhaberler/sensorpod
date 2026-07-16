@@ -12,8 +12,10 @@
 
 #ifdef BOARD_HAS_PSRAM
 #define RBMEM MALLOC_CAP_SPIRAM
+#define BLE_RING_BYTES 32768
 #else
 #define RBMEM MALLOC_CAP_DEFAULT
+#define BLE_RING_BYTES 8192 // internal DRAM is tight (C6/C5 ~320 KB)
 #endif
 
 static auto &bleScanner = BLEScanner::instance();
@@ -23,13 +25,13 @@ void blescanner_setup() {
   // Optional: set a BTHome decryption key (32-char hex string)
   // bleScanner.setBTHomeKey("00112233445566778899aabbccddeeff");
 
-  bleScanner.begin(32768,  // ring buffer size
-                   1000,   // scan time (ms)
-                   100,    // scan interval
-                   99,     // scan window
-                   4096,   // task stack size
-                   1,      // task priority
-                   RBMEM); // ring buffer memory capability
+  bleScanner.begin(BLE_RING_BYTES, // ring buffer size
+                   1000,           // scan time (ms)
+                   100,            // scan interval
+                   99,             // scan window
+                   4096,           // task stack size
+                   1,              // task priority
+                   RBMEM);         // ring buffer memory capability
 }
 
 // Drain up to this many queued advertisements per loop() pass, so a burst

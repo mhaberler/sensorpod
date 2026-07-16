@@ -50,7 +50,8 @@ static void appendf(String &out, const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(buf, sizeof(buf), fmt, ap);
   va_end(ap);
-  out += buf;
+  if (!out.concat(buf))
+    log_w("appendf OOM at len=%u", (unsigned)out.length());
 }
 
 static void append_html_attr(String &out, const String &s) {
@@ -110,6 +111,9 @@ static void json_kv_i(String &out, const char *k, int32_t v, bool &first) {
 }
 
 void sysinfo_html(String &out, bool is_broker_mode) {
+  // Static markup+JS ~15 KB; reserve up front so String growth cannot
+  // silently truncate mid-page when heap is fragmented.
+  out.reserve(18432);
   const esp_partition_t *running = esp_ota_get_running_partition();
   const esp_partition_t *next = esp_ota_get_next_update_partition(NULL);
   const bool wifi_sleep = DeviceConfig::isWifiSleepEnabled();
@@ -221,7 +225,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             "min='1' style='width:4em'> s</label> ",
             (unsigned)ble_age);
     out += "<button type='button' class='config-btn' "
-           "onclick='saveBleDedup()'>Apply</button></p>";
+           "onclick='saveBleDedup()'>Apply</button> "
+           "<small id='ble-dedup-suspend'></small></p>";
     out += "</form>";
   }
 
@@ -393,6 +398,10 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "set('ble-queue',(bs.queue_full||0)+', acquire failed: '+(bs."
       "acquire_fail||0));"
       "}"
+      "function updateBleDedupSuspend(d){"
+      "var e=document.getElementById('ble-dedup-suspend');if(!e)return;"
+      "e.textContent=d.ble_dedup_suspended?'suspended (low heap)':'';"
+      "}"
       "function updateMqtt(m){if(!m)return;"
       "var sum=document.getElementById('mqtt-summary');"
       "if(sum){var h='';"
@@ -433,7 +442,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "}"
       "function refreshLiveStats(){"
       "fetch('/data').then(r=>r.json()).then(d=>{"
-      "updateBleStats(d.ble_stats);updateMqtt(d.mqtt);updateMemory(d);"
+      "updateBleStats(d.ble_stats);updateBleDedupSuspend(d);"
+      "updateMqtt(d.mqtt);updateMemory(d);"
       "var sel=document.getElementById('brokerSelect');"
       "if(sel){var brokers=d.discovered_brokers||[];"
       "if(brokers.length===0){sel.innerHTML='<option>No brokers found (scan "
@@ -803,6 +813,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
             first);
   json_kv_u(out, "ble_dedup", DeviceConfig::isBleDedupEnabled() ? 1 : 0, first);
   json_kv_u(out, "ble_dedup_age", DeviceConfig::getBleDedupAge(), first);
+  json_kv_u(out, "ble_dedup_suspended", ble_dedup_suspended ? 1 : 0, first);
 
   json_kv_str(out, "chip_model", ESP.getChipModel(), first);
   json_kv_u(out, "chip_cores", ESP.getChipCores(), first);
