@@ -261,11 +261,12 @@ void loop() {
       mqtt_client.clear_broker();
       mdns_client.start_async_discovery();
     }
-    // Pick up results when available
-    if (!mdns_client.is_discovering()) {
+    // Pick up results when available — skip vector copy when already
+    // connected or a connect is pending (steady-state idle).
+    if (!mdns_client.is_discovering() && !mqtt_client.connected() &&
+        !mqtt_client.has_pending()) {
       auto brokers = mdns_client.get_last_brokers();
-      if (!brokers.empty() && !mqtt_client.connected() &&
-          !mqtt_client.has_pending()) {
+      if (!brokers.empty()) {
         String resolved = resolve_broker_host(brokers[0].hostname);
         log_i("Client mode: connecting to discovered broker %s at %s:%u",
               brokers[0].instance_name.c_str(), resolved.c_str(),

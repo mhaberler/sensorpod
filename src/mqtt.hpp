@@ -85,8 +85,10 @@ extern MQTTDevice *mqtt_device;
 
 inline void mqtt_publish(const char *topic, const char *payload) {
   extern String hostName;
-  String prefixed = String(hostName) + "/" + topic;
-  if (mqtt_device) {
-    mqtt_device->publish(prefixed.c_str(), payload);
-  }
+  if (!mqtt_device)
+    return;
+  // hostName (<=32) + '/' + longest topic ("ble/<mac>") + NUL
+  char prefixed[96];
+  snprintf(prefixed, sizeof(prefixed), "%s/%s", hostName.c_str(), topic);
+  mqtt_device->publish(prefixed, payload);
 }
