@@ -255,6 +255,12 @@ Device hostname is auto-derived from the last 3 bytes of the MAC address via `Wi
 
 `SGO_DEFAULT_OWNER` / `SGO_DEFAULT_REPO` / `SGO_DEFAULT_BIN` and `BUILD_SHA` / `BUILD_DATE` are auto-injected by `scripts/inject_build_info.py` from `git remote` / commit metadata.
 
+## Hardware recommendations
+
+- Heap memory is rather bit tight on the ESP32-S3 based CPU's
+- low cost: recommend C6-based platforms like the M5Stack Nano-C6 or the Seedstudio Xiao C6
+- adding your own sensors/decoders: go for a ESP32-P4/C6 Platform like the [M5Stack Tab5-P4](https://docs.m5stack.com/en/core/Tab5) or [Waveshare P4 Wifi6 Devkit](https://www.waveshare.com/product/arduino/boards-kits/esp32-p4/esp32-p4-wifi6.htm)
+
 ## Project Structure
 
 ```
