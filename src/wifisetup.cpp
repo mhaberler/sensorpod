@@ -3,6 +3,9 @@
 #include <Network.h>
 #include <PicoMQTT.h>
 #include <WiFi.h>
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+#include <esp32-hal-hosted.h>
+#endif
 #include <esp_netif.h>
 #include <esp_wifi.h>
 
@@ -355,6 +358,17 @@ void wifi_loop() {
     hosted_ota_attempted = true;
     hosted_update_in_progress = true;
     blescanner_stop();
+    if (hostedIsInitialized()) {
+      uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
+      // Refresh slave version into HAL cache (also decides update need).
+      (void)hostedHasUpdate();
+      hostedGetHostVersion(&eh, &en, &ep);
+      hostedGetSlaveVersion(&fh, &fn, &fp);
+      log_w("esp-hosted %s fw: expected %lu.%lu.%lu, found %lu.%lu.%lu",
+            hostedGetSlaveTargetName(), (unsigned long)eh, (unsigned long)en,
+            (unsigned long)ep, (unsigned long)fh, (unsigned long)fn,
+            (unsigned long)fp);
+    }
     bool updated = updateEspHostedSlave();
     hosted_update_in_progress = false;
     if (updated) {
