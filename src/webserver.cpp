@@ -4,6 +4,12 @@
 #include "http_server.hpp"
 #include <WebServer.h>
 #include <WiFi.h>
+#if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
+#include "hosted_ota.hpp"
+#include <Network.h>
+#include <esp32-hal-hosted.h>
+bool hosted_update_busy();
+#endif
 
 extern bool is_broker_mode;
 extern bool wifi_sleep_enabled;
@@ -230,6 +236,70 @@ void webserver_setup() {
     delay(500);
     ESP.restart();
   });
+
+#if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
+  // Debug: force-flash an older C6 co-processor image, then reboot so the
+  // normal upgrade path can be verified. Gated on -DESP_HOSTED_DOWNGRADE.
+  http_server.on("/api/hosted-downgrade", HTTP_POST, []() {
+    log_request();
+    if (!hostedIsInitialized()) {
+      http_server.send(503, "application/json",
+                       "{\"error\":\"esp-hosted not initialized\"}");
+      return;
+    }
+    if (!Network.isOnline()) {
+      http_server.send(503, "application/json",
+                       "{\"error\":\"network not online\"}");
+      return;
+    }
+    if (hosted_update_busy()) {
+      http_server.send(409, "application/json",
+                       "{\"error\":\"hosted flash already in progress\"}");
+      return;
+    }
+
+    uint32_t maj = 0, min = 0, pat = 0;
+    const bool explicit_ver = http_server.hasArg("major") ||
+                              http_server.hasArg("minor") ||
+                              http_server.hasArg("patch");
+    if (explicit_ver) {
+      hostedGetHostVersion(&maj, &min, &pat);
+      if (http_server.hasArg("major"))
+        maj = (uint32_t)http_server.arg("major").toInt();
+      if (http_server.hasArg("minor"))
+        min = (uint32_t)http_server.arg("minor").toInt();
+      if (http_server.hasArg("patch"))
+        pat = (uint32_t)http_server.arg("patch").toInt();
+      char probe[128];
+      buildHostedFwUrl(probe, sizeof(probe), maj, min, pat);
+      if (!hostedFwUrlExists(probe)) {
+        http_server.send(404, "application/json",
+                         "{\"error\":\"firmware not on Arduino CDN\"}");
+        return;
+      }
+    } else if (!findOlderHostedFw(&maj, &min, &pat)) {
+      // Default: oldest known CDN image older than host (currently 2.8.5).
+      http_server.send(404, "application/json",
+                       "{\"error\":\"no older firmware on Arduino CDN\"}");
+      return;
+    }
+
+    char url[128];
+    buildHostedFwUrl(url, sizeof(url), maj, min, pat);
+    if (!request_hosted_downgrade(maj, min, pat)) {
+      http_server.send(409, "application/json",
+                       "{\"error\":\"could not arm hosted downgrade\"}");
+      return;
+    }
+
+    char body[256];
+    snprintf(body, sizeof(body),
+             "{\"status\":\"accepted\",\"target\":\"%lu.%lu.%lu\",\"url\":\"%"
+             "s\"}",
+             (unsigned long)maj, (unsigned long)min, (unsigned long)pat, url);
+    http_server.send(200, "application/json", body);
+  });
+#endif // BOARD_HAS_SDIO_ESP_HOSTED && ESP_HOSTED_DOWNGRADE
 
   http_server.on("/favicon.ico", []() {
     log_request();

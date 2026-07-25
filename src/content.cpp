@@ -17,6 +17,11 @@
 #include "mqtt_client.hpp"
 #include "reset_reason.hpp"
 
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+#include <esp32-hal-hosted.h>
+bool hosted_update_busy();
+#endif
+
 #if __has_include("build_info.hpp")
 #include "build_info.hpp"
 #endif
@@ -330,6 +335,20 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "clear-ble-stats',{method:'POST'})"
       ".then(r=>r.json()).then(d=>{location.reload()})"
       ".catch(e=>alert('Error: '+e))}"
+#if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
+      "function hostedDowngrade(){"
+      "if(!confirm('Force-flash an older C6 co-processor firmware, then "
+      "reboot so the auto-upgrade path can be tested. Continue?'))return;"
+      "fetch('/api/"
+      "hosted-downgrade',{method:'POST'})"
+      ".then(async "
+      "r=>{var t=await r.text();var d={};try{d=JSON.parse(t)}catch(e){alert('"
+      "HTTP '+r.status+': '+t);return;}if(!r.ok||d.error){alert('Error: "
+      "'+(d.error||('HTTP '+r.status)));return;}"
+      "alert('Downgrade accepted to '+d.target+'\\n'+d.url+'\\nWatch serial; "
+      "device will reboot after flash.')})"
+      ".catch(e=>alert('Error: '+e))}"
+#endif
       "window.addEventListener('load',loadBrokers);"
       "</script></div>";
 
@@ -438,7 +457,32 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>IDF: %s</li>", esp_app_get_description()->idf_ver);
   appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
   appendf(out, "<li>Reset reason: %s</li>", reset_reason_name());
-  appendf(out, "<li>Uptime: %lus</li></ul>", (unsigned long)(millis() / 1000));
+  appendf(out, "<li>Uptime: %lus</li>", (unsigned long)(millis() / 1000));
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+  if (hostedIsInitialized() && !hosted_update_busy()) {
+    uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
+    (void)hostedHasUpdate();
+    hostedGetHostVersion(&eh, &en, &ep);
+    hostedGetSlaveVersion(&fh, &fn, &fp);
+    appendf(out, "<li>esp-hosted %s host (expected): %lu.%lu.%lu</li>",
+            hostedGetSlaveTargetName(), (unsigned long)eh, (unsigned long)en,
+            (unsigned long)ep);
+    appendf(out, "<li>esp-hosted %s slave (found): %lu.%lu.%lu</li>",
+            hostedGetSlaveTargetName(), (unsigned long)fh, (unsigned long)fn,
+            (unsigned long)fp);
+  } else if (hostedIsInitialized()) {
+    out += "<li>esp-hosted: flash in progress</li>";
+  }
+#endif
+  out += "</ul>";
+#if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
+  out += "<p><button type='button' class='config-btn' "
+         "onclick='hostedDowngrade()'>Downgrade C6 (debug)</button></p>";
+  out += "<p><small>Forces a much older co-processor image from the Arduino "
+         "CDN (oldest known publish still below host, e.g. 2.8.5), reboots, "
+         "then the normal upgrade path should restore the host "
+         "version. Build with -DESP_HOSTED_DOWNGRADE.</small></p>";
+#endif
 
 #ifdef OTA_WEB_UPDATER
   out += "<h3>SafeGithubOTA</h3><ul>";
@@ -571,6 +615,22 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_u(out, "reset_reason_code", (uint32_t)reset_reason_code(), first);
   json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
   json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+  if (hostedIsInitialized() && !hosted_update_busy()) {
+    uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
+    char hv[24], sv[24];
+    (void)hostedHasUpdate();
+    hostedGetHostVersion(&eh, &en, &ep);
+    hostedGetSlaveVersion(&fh, &fn, &fp);
+    snprintf(hv, sizeof(hv), "%lu.%lu.%lu", (unsigned long)eh,
+             (unsigned long)en, (unsigned long)ep);
+    snprintf(sv, sizeof(sv), "%lu.%lu.%lu", (unsigned long)fh,
+             (unsigned long)fn, (unsigned long)fp);
+    json_kv_str(out, "hosted_host_version", hv, first);
+    json_kv_str(out, "hosted_slave_version", sv, first);
+    json_kv_str(out, "hosted_target", hostedGetSlaveTargetName(), first);
+  }
+#endif
 #ifdef SGO_DEFAULT_OWNER
   json_kv_str(out, "sgo_owner", SGO_DEFAULT_OWNER, first);
 #endif

@@ -11,6 +11,9 @@
 
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
+#if defined(ESP_HOSTED_DOWNGRADE)
+#include "hosted_ota.hpp"
+#endif
 #include "http_server.hpp"
 #include "mdns.h"
 #include "mdns_state.hpp"
@@ -62,7 +65,43 @@ static uint8_t last_ap_station_num = 0;
 // racing hostedWriteUpdate.
 static volatile bool hosted_ota_pending = false;
 static bool hosted_ota_attempted = false;
-#endif
+
+#if defined(ESP_HOSTED_DOWNGRADE)
+// Debug forced downgrade: armed by POST /api/hosted-downgrade, run in
+// wifi_loop() (not the HTTP handler) with the same BLE quiesce as upgrade.
+static volatile bool hosted_downgrade_pending = false;
+static uint32_t hosted_downgrade_maj = 0;
+static uint32_t hosted_downgrade_min = 0;
+static uint32_t hosted_downgrade_pat = 0;
+
+bool request_hosted_downgrade(uint32_t maj, uint32_t min, uint32_t pat) {
+  if (!hostedIsInitialized()) {
+    log_e("hosted downgrade: not initialized");
+    return false;
+  }
+  if (hosted_update_in_progress || hosted_downgrade_pending) {
+    log_e("hosted downgrade: flash already pending/in progress");
+    return false;
+  }
+  if (!Network.isOnline()) {
+    log_e("hosted downgrade: network not online");
+    return false;
+  }
+  // Supersede a pending auto-upgrade check so the debug path wins.
+  if (hosted_ota_pending) {
+    log_w("hosted downgrade: cancelling pending auto-upgrade check");
+    hosted_ota_pending = false;
+  }
+  hosted_downgrade_maj = maj;
+  hosted_downgrade_min = min;
+  hosted_downgrade_pat = pat;
+  hosted_downgrade_pending = true;
+  log_w("hosted downgrade armed: target %lu.%lu.%lu", (unsigned long)maj,
+        (unsigned long)min, (unsigned long)pat);
+  return true;
+}
+#endif // ESP_HOSTED_DOWNGRADE
+#endif // BOARD_HAS_SDIO_ESP_HOSTED
 
 bool hosted_update_busy() { return hosted_update_in_progress; }
 
@@ -352,34 +391,6 @@ void wifi_loop() {
 
   unsigned long now = millis();
 
-#ifdef BOARD_HAS_SDIO_ESP_HOSTED
-  if (hosted_ota_pending) {
-    hosted_ota_pending = false;
-    hosted_ota_attempted = true;
-    hosted_update_in_progress = true;
-    blescanner_stop();
-    if (hostedIsInitialized()) {
-      uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
-      // Refresh slave version into HAL cache (also decides update need).
-      (void)hostedHasUpdate();
-      hostedGetHostVersion(&eh, &en, &ep);
-      hostedGetSlaveVersion(&fh, &fn, &fp);
-      log_w("esp-hosted %s fw: expected %lu.%lu.%lu, found %lu.%lu.%lu",
-            hostedGetSlaveTargetName(), (unsigned long)eh, (unsigned long)en,
-            (unsigned long)ep, (unsigned long)fh, (unsigned long)fn,
-            (unsigned long)fp);
-    }
-    bool updated = updateEspHostedSlave();
-    hosted_update_in_progress = false;
-    if (updated) {
-      // Restart host so the new co-processor firmware activates cleanly.
-      ESP.restart();
-    }
-    if (ble_scan_enabled)
-      blescanner_setup();
-  }
-#endif
-
   // STA reconnect watchdog: the Arduino WiFi driver gives up permanently on
   // WIFI_REASON_AUTH_FAIL, so after a hotspot toggles off/on the STA can stay
   // stuck at WL_IDLE_STATUS forever. Re-issue the connect ourselves once STA
@@ -397,11 +408,82 @@ void wifi_loop() {
     }
   }
 
-  // Skip HTTP handling entirely while the hosted co-processor is being
-  // flashed - request handlers read WiFi.RSSI()/SSID()/etc., which would
-  // otherwise race the RPC transport the flash is using (see comment on
-  // hosted_update_in_progress above).
+  // Handle HTTP before hosted flash work so POST /api/hosted-downgrade can arm
+  // in the same loop turn. Skip while flashing (WiFi RPC races SDIO OTA).
   if (!hosted_update_in_progress) {
     webserver_loop();
   }
+
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+#if defined(ESP_HOSTED_DOWNGRADE)
+  if (hosted_downgrade_pending) {
+    hosted_downgrade_pending = false;
+    hosted_update_in_progress = true;
+    char url[128];
+    buildHostedFwUrl(url, sizeof(url), hosted_downgrade_maj,
+                     hosted_downgrade_min, hosted_downgrade_pat);
+    // Log versions before quiescing BLE (extra RPC after stop hurts OTA begin).
+    if (hostedIsInitialized()) {
+      uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
+      (void)hostedHasUpdate();
+      hostedGetHostVersion(&eh, &en, &ep);
+      hostedGetSlaveVersion(&fh, &fn, &fp);
+      log_w("esp-hosted %s fw: expected %lu.%lu.%lu, found %lu.%lu.%lu; "
+            "forcing downgrade to %lu.%lu.%lu",
+            hostedGetSlaveTargetName(), (unsigned long)eh, (unsigned long)en,
+            (unsigned long)ep, (unsigned long)fh, (unsigned long)fn,
+            (unsigned long)fp, (unsigned long)hosted_downgrade_maj,
+            (unsigned long)hosted_downgrade_min,
+            (unsigned long)hosted_downgrade_pat);
+    }
+    blescanner_stop();
+    delay(500); // let hosted BLE/HCI drain before OTA RPC
+    log_w("hosted downgrade URL: %s", url);
+    bool ok = flashEspHostedFromUrl(url);
+    hosted_update_in_progress = false;
+    if (ok) {
+      ESP.restart();
+    }
+    // Failed OTA begin/write often wedges SDIO RPC — do not restart BLE.
+    log_e("hosted downgrade failed; restarting to recover SDIO");
+    delay(200);
+    ESP.restart();
+  } else if (hosted_ota_pending) {
+#else
+  if (hosted_ota_pending) {
+#endif // ESP_HOSTED_DOWNGRADE
+    hosted_ota_pending = false;
+    hosted_ota_attempted = true;
+    hosted_update_in_progress = true;
+    bool need_update = false;
+    if (hostedIsInitialized()) {
+      uint32_t eh = 0, en = 0, ep = 0, fh = 0, fn = 0, fp = 0;
+      // Refresh slave version into HAL cache (also decides update need).
+      need_update = hostedHasUpdate();
+      hostedGetHostVersion(&eh, &en, &ep);
+      hostedGetSlaveVersion(&fh, &fn, &fp);
+      log_w("esp-hosted %s fw: expected %lu.%lu.%lu, found %lu.%lu.%lu",
+            hostedGetSlaveTargetName(), (unsigned long)eh, (unsigned long)en,
+            (unsigned long)ep, (unsigned long)fh, (unsigned long)fn,
+            (unsigned long)fp);
+    }
+    if (need_update) {
+      blescanner_stop();
+      delay(500);
+    }
+    bool updated = updateEspHostedSlave();
+    hosted_update_in_progress = false;
+    if (updated) {
+      // Restart host so the new co-processor firmware activates cleanly.
+      ESP.restart();
+    }
+    if (need_update && !updated) {
+      log_e("hosted upgrade failed; restarting to recover SDIO");
+      delay(200);
+      ESP.restart();
+    }
+    if (ble_scan_enabled && !blescanner_started())
+      blescanner_setup();
+  }
+#endif // BOARD_HAS_SDIO_ESP_HOSTED
 }

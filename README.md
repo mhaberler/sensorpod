@@ -170,6 +170,10 @@ Once SensorPod is on WiFi (either as STA or via its AP), it serves a web UI on p
 
 The root page shows firmware identity (version, build SHA, build date), chip info, heap/PSRAM, flash, the partition table, network state, BLE statistics, and announced mDNS services. `GET /data` returns the same as JSON.
 
+### ESP-Hosted C6 debug (P4 boards only)
+
+On SDIO-hosted P4 boards the web UI shows host/slave esp-hosted versions. With `-DESP_HOSTED_DOWNGRADE` enabled (see `[hosted-downgrade]` in `platformio.ini`), a **Downgrade C6 (debug)** button and `POST /api/hosted-downgrade` force-flash an older co-processor image from the Arduino CDN (default: oldest known publish still below host — currently `2.8.5`; override with `major` / `minor` / `patch`), then reboot. After reboot the normal upgrade path should restore the host version — use this to verify C6 OTA without reflashing the slave over USB.
+
 ## WiFi provisioning
 
 SensorPod does **not** take WiFi credentials at build time. Provisioning is done at runtime over the **serial** transport of the [Improv-WiFi](https://www.improv-wifi.com/) protocol. If serial provisioning doesn't complete within `TIME_TO_CONNECT` (15s on P4, 8s elsewhere), the firmware also falls back to Improv **BLE** provisioning (enabled via the `-DIMPROV_WIFI_BLE_ENABLED` flag in the `[improv]` block). Credentials are stored in NVS (`Preferences` namespace `wifi-creds`).
@@ -280,6 +284,7 @@ sensorpod/
 │   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, BLE options
 │   ├── mdns_state.hpp      # mDNS service struct + externs
 │   ├── led.hpp/cpp         # LED status feedback
+│   ├── hosted_ota.cpp/.hpp # force-flash esp-hosted C6 from URL (P4 debug downgrade)
 │   ├── ota.cpp             # optional OTA web updater (off by default, gated on OTA_WEB_UPDATER)
 │   ├── http_server.hpp     # shared WebServer handle + page style
 │   └── credstore.hpp       # NVS wrapper for WiFi credentials
