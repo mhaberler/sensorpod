@@ -15,6 +15,11 @@
 extern bool is_broker_mode;
 extern bool wifi_sleep_enabled;
 extern bool improv_provisioning;
+extern bool ble_scan_enabled;
+
+void blescanner_setup();
+void blescanner_stop();
+bool blescanner_started();
 
 String hostName;
 
@@ -39,21 +44,30 @@ static wifi_auth_mode_t sta_authmode = WIFI_AUTH_OPEN;
 static bool sta_is_5g = false;
 
 // Set while updateEspHostedSlave() is flashing the ESP-Hosted co-processor.
-// The flash runs over the same RPC transport as most WiFi.* accessors
-// (softAPgetStationNum, RSSI, SSID, BSSID, channel/config reads all go
-// through esp_wifi_sta_get_ap_info/esp_wifi_get_config over RPC). Calling
-// any of them concurrently faults the RPC layer - observed as a Guru
-// Meditation Error in rpc_wifi_ap_get_sta_list, and separately an assert
-// abort in rpc_wifi_sta_get_ap_info triggered by an HTTP request reading
-// WiFi.RSSI() while a hosted-slave OTA was in progress. Rather than
-// guarding every individual accessor, callers check hosted_update_busy()
-// and skip WiFi RPC work entirely for the (few-second) duration of the
-// flash: wifi_loop() skips webserver_loop(), main.cpp skips the periodic
-// status publish.
+// The flash runs over the same RPC/SDIO transport as WiFi.* accessors and
+// hosted BLE (NimBLE HCI). Concurrent WiFi RPC or BLE scan during flash
+// faults the transport (Req_OTAWrite timeouts, rpc_wifi_* panics). Callers
+// check hosted_update_busy() and skip WiFi RPC / BLE work for the duration:
+// wifi_loop() skips webserver_loop(), main.cpp skips status publish, and
+// BLE is stopped before the OTA runs.
 static volatile bool hosted_update_in_progress = false;
 static uint8_t last_ap_station_num = 0;
 
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+// GOT_IP only arms this; wifi_loop() runs the OTA off the NetworkEvents task
+// after stopping BLE. Avoids HTTPS+flash on the event worker and BLE HCI
+// racing hostedWriteUpdate.
+static volatile bool hosted_ota_pending = false;
+static bool hosted_ota_attempted = false;
+#endif
+
 bool hosted_update_busy() { return hosted_update_in_progress; }
+
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+bool hosted_ota_done() { return hosted_ota_attempted; }
+#else
+bool hosted_ota_done() { return true; }
+#endif
 
 uint8_t safe_ap_station_num() {
   if (hosted_update_in_progress) {
@@ -139,17 +153,12 @@ static void onNetworkEvent(arduino_event_id_t event) {
       }
       log_w("AP channel=%d (may have followed STA)", wifi_ap_channel());
     }
-    if (Network.isOnline()) {
-      hosted_update_in_progress = true;
-      bool updated = updateEspHostedSlave();
-      hosted_update_in_progress = false;
-      if (updated) {
-        // Restart the host ESP32 after successful update
-        // This is currently required to properly activate the new firmware
-        // on the ESP-Hosted co-processor
-        ESP.restart();
-      }
-    }
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+    // Defer OTA to wifi_loop(): NetworkEvents must not block on HTTPS+flash,
+    // and BLE must be quiesced first (shared SDIO to the C6).
+    if (Network.isOnline())
+      hosted_ota_pending = true;
+#endif
     break;
   case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
     log_d("AP client got IP");
@@ -339,6 +348,23 @@ void wifi_loop() {
   }
 
   unsigned long now = millis();
+
+#ifdef BOARD_HAS_SDIO_ESP_HOSTED
+  if (hosted_ota_pending) {
+    hosted_ota_pending = false;
+    hosted_ota_attempted = true;
+    hosted_update_in_progress = true;
+    blescanner_stop();
+    bool updated = updateEspHostedSlave();
+    hosted_update_in_progress = false;
+    if (updated) {
+      // Restart host so the new co-processor firmware activates cleanly.
+      ESP.restart();
+    }
+    if (ble_scan_enabled)
+      blescanner_setup();
+  }
+#endif
 
   // STA reconnect watchdog: the Arduino WiFi driver gives up permanently on
   // WIFI_REASON_AUTH_FAIL, so after a hotspot toggles off/on the STA can stay

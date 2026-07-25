@@ -6,7 +6,9 @@
 #include <vector>
 
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/ringbuf.h"
+#include "freertos/task.h"
 #include "ringbuffer.hpp"
 
 #include <BLEAdvertisedDevice.h>
@@ -95,6 +97,10 @@ struct BLEScanner::Impl {
   uint16_t scanInterval = 100;
   uint16_t scanWindow = 99;
   bool activeScan = false;
+
+  TaskHandle_t taskHandle = nullptr;
+  volatile bool stopRequested = false;
+  volatile bool taskRunning = false;
 
   uint32_t queueFull = 0;
   uint32_t acquireFail = 0;
@@ -272,10 +278,11 @@ class ScanCallback : public BLEAdvertisedDeviceCallbacks {
 };
 
 // ---------------------------------------------------------------------------
-// Scan task (runs forever on its own RTOS task)
+// Scan task (runs on its own RTOS task until end() requests stop)
 // ---------------------------------------------------------------------------
 static void scanTask(void *param) {
   auto *impl = static_cast<BLEScanner::Impl *>(param);
+  impl->taskRunning = true;
 
   BLEDevice::init("");
   impl->pBLEScan = BLEDevice::getScan();
@@ -284,13 +291,16 @@ static void scanTask(void *param) {
   impl->pBLEScan->setInterval(impl->scanInterval);
   impl->pBLEScan->setWindow(impl->scanWindow);
 
-  while (true) {
-    BLEScanResults *foundDevices =
-        impl->pBLEScan->start(impl->scanTimeMs / 1000, false);
-    // log_i("Devices found: %d", foundDevices->getCount());
+  while (!impl->stopRequested) {
+    impl->pBLEScan->start(impl->scanTimeMs / 1000, false);
     impl->pBLEScan->clearResults();
     delay(1);
   }
+
+  impl->pBLEScan = nullptr;
+  impl->taskHandle = nullptr;
+  impl->taskRunning = false;
+  vTaskDelete(nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +367,6 @@ void BLEScanner::begin(size_t ringBufSize, uint32_t scanTimeMs,
                        UBaseType_t ringBufCap) {
   if (_started)
     return;
-  _started = true;
 
   if (!_impl) {
     _impl = new Impl();
@@ -367,12 +376,44 @@ void BLEScanner::begin(size_t ringBufSize, uint32_t scanTimeMs,
   _impl->scanTimeMs = scanTimeMs;
   _impl->scanInterval = scanInterval;
   _impl->scanWindow = scanWindow;
+  _impl->stopRequested = false;
+  _impl->taskRunning = false;
 
-  _impl->queue = new espidf::RingBuffer();
-  _impl->queue->create(ringBufSize, RINGBUF_TYPE_NOSPLIT, ringBufCap);
+  if (!_impl->queue) {
+    _impl->queue = new espidf::RingBuffer();
+    _impl->queue->create(ringBufSize, RINGBUF_TYPE_NOSPLIT, ringBufCap);
+  }
 
+  _started = true;
   xTaskCreate(scanTask, "ble_scan", taskStackSize, _impl, taskPriority,
-              nullptr);
+              &_impl->taskHandle);
+}
+
+void BLEScanner::end() {
+  if (!_started || !_impl)
+    return;
+
+  _impl->stopRequested = true;
+  if (_impl->pBLEScan)
+    _impl->pBLEScan->stop();
+
+  // Wait for scanTask to finish (blocking scan window is ~1s).
+  const uint32_t deadline = millis() + 5000;
+  while (_impl->taskRunning && millis() < deadline)
+    delay(10);
+
+  if (_impl->taskRunning && _impl->taskHandle) {
+    log_w("BLE scan task did not exit; force-deleting");
+    vTaskDelete(_impl->taskHandle);
+    _impl->taskHandle = nullptr;
+    _impl->taskRunning = false;
+  }
+
+  BLEDevice::deinit(true);
+  _impl->pBLEScan = nullptr;
+  _impl->stopRequested = false;
+  _started = false;
+  log_i("BLE scanner stopped");
 }
 
 bool BLEScanner::deliver(JsonDocument &inDoc, JsonDocument &outDoc) {

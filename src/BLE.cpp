@@ -31,6 +31,10 @@ void blescanner_setup() {
                    RBMEM); // ring buffer memory capability
 }
 
+void blescanner_stop() { bleScanner.end(); }
+
+bool blescanner_started() { return bleScanner.started(); }
+
 // Drain up to this many queued advertisements per loop() pass, so a burst
 // of BLE traffic doesn't starve the queue and drive acquireFail up while
 // the rest of loop() (WiFi/MQTT/web/Improv) still gets serviced each pass.

@@ -51,7 +51,7 @@ volatile uint8_t ble_decoder_mode = DeviceConfig::BLE_DECODER_THEENGS;
 volatile bool ble_retain_undecoded = false;
 volatile bool ble_dedup_enabled = true;
 volatile uint32_t ble_dedup_age = 1;
-static bool ble_scan_enabled = true; // boot-time gate, restart to change
+bool ble_scan_enabled = true; // boot-time gate, restart to change
 // True while an Improv provisioning connect is in progress, so the STA
 // reconnect watchdog in wifisetup.cpp stays out of Improv's way.
 bool improv_provisioning = false;
@@ -63,7 +63,10 @@ void cacheStaCredentials(const String &ssid, const String &pass);
 void stopSta();
 uint8_t safe_ap_station_num();
 bool hosted_update_busy();
+bool hosted_ota_done();
 void blescanner_setup();
+void blescanner_stop();
+bool blescanner_started();
 void blescanner_loop();
 bool i2c_probe(TwoWire &w, uint8_t addr);
 void i2c_scan(TwoWire &w);
@@ -163,8 +166,13 @@ void setup() {
   // i2c_scan(Wire);
   lox_present = lox_init(Wire);
   wifi_setup();
+  // On SDIO-hosted P4 boards, BLE shares the C6 transport with co-processor
+  // OTA — defer start until after the hosted version check (wifi_loop) or
+  // the offline fallback in loop().
+#if !defined(BOARD_HAS_SDIO_ESP_HOSTED)
   if (ble_scan_enabled)
     blescanner_setup();
+#endif
 
   // Initialize MQTT device based on role
   if (is_broker_mode) {
@@ -193,7 +201,7 @@ void loop() {
 
   unsigned long now = millis();
   button_loop();
-  if (ble_scan_enabled)
+  if (ble_scan_enabled && blescanner_started())
     blescanner_loop();
 #if defined(HAS_M5UNIFIED)
   M5.update();
@@ -276,6 +284,16 @@ void loop() {
   ledLoop();
 
   wifi_loop();
+
+#if defined(BOARD_HAS_SDIO_ESP_HOSTED)
+  // AP-only / no STA online: hosted OTA never runs — start BLE anyway.
+  if (ble_scan_enabled && !blescanner_started() && !hosted_ota_done() &&
+      !hosted_update_busy() && now > 30000) {
+    log_w("Hosted OTA not attempted; starting deferred BLE scan");
+    blescanner_setup();
+  }
+#endif
+
   yield();
 }
 

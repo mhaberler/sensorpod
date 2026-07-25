@@ -57,6 +57,13 @@ public:
              uint32_t taskStackSize = 4096, UBaseType_t taskPriority = 1,
              UBaseType_t ringBufCap = MALLOC_CAP_DEFAULT);
 
+  /// Stop the scan task and deinit the BLE stack. Idempotent.
+  /// Safe to call before begin(); begin() may be called again after end().
+  void end();
+
+  /// True while the scan task is running (after begin(), before end()).
+  bool started() const { return _started; }
+
   /// Drain one item from the ring buffer, decode per ble_decoder_mode and
   /// populate doc (decoded result, or raw advertisement in NONE mode /
   /// when ble_retain_undecoded is set).
