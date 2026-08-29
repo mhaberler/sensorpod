@@ -305,6 +305,26 @@ int decode_ac12_field(unsigned char *msg, int *unit) {
 static const char *ais_charset =
     "?ABCDEFGHIJKLMNOPQRSTUVWXYZ????? ???????????????0123456789??????";
 
+// ME-relative bit accessors (1-based, bit 1 = first bit of the ME field,
+// i.e. msg[4] MSB), matching readsb's getbit()/getbits() convention so
+// bit numbers from readsb's decodeESOperationalStatus() can be
+// transcribed directly (patch: sensorpod).
+static int me_getbit(unsigned char *msg, int bitnum) {
+  int bi = bitnum - 1;
+  int by = 4 + (bi >> 3);
+  int mask = 1 << (7 - (bi & 7));
+  return (msg[by] & mask) != 0;
+}
+
+static unsigned me_getbits(unsigned char *msg, int firstbit, int lastbit) {
+  unsigned value = 0;
+  int i;
+  for (i = firstbit; i <= lastbit; i++) {
+    value = (value << 1) | (unsigned)me_getbit(msg, i);
+  }
+  return value;
+}
+
 // Decode a raw Mode S message demodulated as a stream of bytes by
 // mode_s_detect(), and split it into fields populating a mode_s_msg structure.
 void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
@@ -483,6 +503,34 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
       } else if (mm->mesub == 3 || mm->mesub == 4) {
         mm->heading_is_valid = msg[5] & (1 << 2);
         mm->heading = (360.0 / 128) * (((msg[5] & 3) << 5) | (msg[6] >> 3));
+      }
+    } else if (mm->metype == 31 && mm->mesub == 0) {
+      // Operational Status, airborne (mesub 0). Bit numbers are
+      // ME-relative (1-based), cross-checked against readsb's
+      // decodeESOperationalStatus() (patch: sensorpod). Only versions 1
+      // and 2 carry NIC-A/NACp/GVA/SIL - version 0 has none of these, so
+      // opstatus_valid is left 0 for it.
+      unsigned version = me_getbits(msg, 41, 43);
+      mm->opstatus_version = version;
+      if (version == 1 || version == 2) {
+        mm->opstatus_valid = 1;
+        mm->nic_a_valid = 1;
+        mm->nic_a = me_getbit(msg, 44);
+        mm->nac_p_valid = 1;
+        mm->nac_p = me_getbits(msg, 45, 48);
+        mm->sil_valid = 1;
+        mm->sil = me_getbits(msg, 51, 52);
+        if (version == 1) {
+          mm->sil_type = 0; // per-hour (version 1 doesn't distinguish)
+          mm->nic_baro_valid = 1;
+          mm->nic_baro = me_getbit(msg, 53);
+        } else {                             // version == 2
+          mm->sil_type = me_getbit(msg, 55); // 1 = per-sample
+          mm->gva_valid = 1;
+          mm->gva = me_getbits(msg, 49, 50);
+          mm->nic_baro_valid = 1;
+          mm->nic_baro = me_getbit(msg, 53);
+        }
       }
     }
   }

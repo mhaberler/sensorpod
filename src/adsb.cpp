@@ -64,6 +64,15 @@ struct Aircraft {
   uint32_t seen_pos_ms = 0;
   uint32_t messages = 0;
 
+  // Navigation quality (ME31 mesub 0, airborne operational status).
+  bool has_opstatus = false;
+  int nav_version = -1;
+  int nac_p = -1;
+  int gva = -1;
+  int nic_baro = -1;
+  int sil = -1;
+  int sil_type = -1;
+
   // CPR pairing state
   bool even_valid = false, odd_valid = false;
   int even_lat = 0, even_lon = 0, odd_lat = 0, odd_lon = 0;
@@ -258,6 +267,19 @@ static void adsb_process_frame(const char *hex, size_t hexlen) {
       ac->alt_geom = ac->alt_baro + delta;
       ac->has_alt_geom = true;
     }
+  } else if (mm.metype == 31 && mm.mesub == 0 && mm.opstatus_valid) {
+    ac->has_opstatus = true;
+    ac->nav_version = mm.opstatus_version;
+    if (mm.nac_p_valid)
+      ac->nac_p = mm.nac_p;
+    if (mm.gva_valid)
+      ac->gva = mm.gva;
+    if (mm.nic_baro_valid)
+      ac->nic_baro = mm.nic_baro;
+    if (mm.sil_valid) {
+      ac->sil = mm.sil;
+      ac->sil_type = mm.sil_type;
+    }
   }
   // DF4/5/20/21 squawk fields are not decoded (DF17/18 module output only).
 }
@@ -291,6 +313,19 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
     doc["lat"] = ac.lat;
     doc["lon"] = ac.lon;
     doc["seen_pos"] = (now - ac.seen_pos_ms) / 1000.0;
+  }
+  if (ac.has_opstatus) {
+    doc["version"] = ac.nav_version;
+    if (ac.nic_baro >= 0)
+      doc["nic_baro"] = ac.nic_baro;
+    if (ac.nac_p >= 0)
+      doc["nac_p"] = ac.nac_p;
+    if (ac.sil >= 0) {
+      doc["sil"] = ac.sil;
+      doc["sil_type"] = ac.sil_type ? "persample" : "perhour";
+    }
+    if (ac.gva >= 0)
+      doc["gva"] = ac.gva;
   }
   doc["seen"] = (now - ac.last_seen_ms) / 1000.0;
   doc["messages"] = ac.messages;
