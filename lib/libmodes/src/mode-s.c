@@ -532,6 +532,34 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
           mm->nic_baro = me_getbit(msg, 53);
         }
       }
+    } else if (mm->metype == 28 && mm->mesub == 1) {
+      // Aircraft Status, Emergency/Priority (mesub 1). Bit numbers are
+      // ME-relative (1-based), cross-checked against readsb's
+      // decodeESAircraftStatus() (patch: sensorpod).
+      mm->es_emergency_valid = 1;
+      mm->es_emergency = me_getbits(msg, 9, 11);
+
+      // ID13 field, 13 bits, MSB (bit 12) first. Bit-to-Gillham-group
+      // mapping transcribed from readsb's decodeID13Field() (patch:
+      // sensorpod): bit12=C1 bit11=A1 bit10=C2 bit9=A2 bit8=C4 bit7=A4
+      // bit6=X(unused) bit5=B1 bit4=D1 bit3=B2 bit2=D2 bit1=B4 bit0=D4.
+      unsigned id13 = me_getbits(msg, 12, 24);
+      if (id13) {
+        int a = ((id13 >> 7) & 1) << 2 |  // A4
+                ((id13 >> 9) & 1) << 1 |  // A2
+                ((id13 >> 11) & 1);       // A1
+        int b = ((id13 >> 1) & 1) << 2 |  // B4
+                ((id13 >> 3) & 1) << 1 |  // B2
+                ((id13 >> 5) & 1);        // B1
+        int c = ((id13 >> 8) & 1) << 2 |  // C4
+                ((id13 >> 10) & 1) << 1 | // C2
+                ((id13 >> 12) & 1);       // C1
+        int d = (id13 & 1) << 2 |         // D4
+                ((id13 >> 2) & 1) << 1 |  // D2
+                ((id13 >> 4) & 1);        // D1
+        mm->es_squawk_valid = 1;
+        mm->es_squawk = a * 1000 + b * 100 + c * 10 + d;
+      }
     }
   }
   mm->phase_corrected = 0; // Set to 1 by the caller if needed.

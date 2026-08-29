@@ -74,10 +74,20 @@ The reader task decouples UART draining from those main-loop stalls.
      they're left unset for it. Bit offsets cross-checked against
      readsb's own `decodeESOperationalStatus()` and validated with a
      synthetic CRC-valid test frame (every field round-trips correctly).
-  4. **Deferred, not decoded**: ME28 (emergency/status), ME31 subtype 1
-     (surface operational status), and position-message-derived NIC/RC
-     (readsb computes these per `metype` + version from a separate
-     lookup table in `track.c`, which isn't ported).
+  4. ME28 (Aircraft Status) subtype 1 (Emergency/Priority Status):
+     3-bit emergency code plus the ID13 squawk sub-field, giving DF17/18
+     aircraft an actual `squawk` (otherwise only available from
+     DF5/DF21, which the module doesn't emit). The ID13→squawk Gillham
+     interleave was cross-checked bit-for-bit against readsb's
+     `decodeID13Field()`, and validated by decoding 17 raw bit patterns
+     (including all-zero, all-one, and every single-bit-set position)
+     through both this new path and the pre-existing, unmodified
+     DF4/5/20/21 identity decoder in this same file — both produced the
+     same squawk for every pattern.
+  5. **Deferred, not decoded**: ME31 subtype 1 (surface operational
+     status), and position-message-derived NIC/RC (readsb computes these
+     per `metype` + version from a separate lookup table in `track.c`,
+     which isn't ported).
 - `src/cpr.c` / `src/cpr.h` — readsb's CPR position solver, ported
   **verbatim** (GPL-3, same license as this repo). Only
   `decodeCPRairborne()` is used: global position solve from an even/odd
@@ -101,12 +111,17 @@ The reader task decouples UART draining from those main-loop stalls.
   using the default.
 - JSON schema: readsb `aircraft.json` field names, subset —
   `hex`, `flight`, `category`, `alt_baro`, `alt_geom`, `gs`, `track`,
-  `baro_rate`, `squawk`, `lat`, `lon`, `seen_pos`, `version`, `nic_baro`,
-  `nac_p`, `sil`, `sil_type`, `gva`, `seen`, `messages`.
+  `baro_rate`, `squawk`, `emergency`, `lat`, `lon`, `seen_pos`, `version`,
+  `nic_baro`, `nac_p`, `sil`, `sil_type`, `gva`, `seen`, `messages`.
   Fields are omitted (not zero-filled) until decoded at least once.
   `version`/`nic_baro`/`nac_p`/`sil`/`sil_type`/`gva` come from ME31 and
   only appear once an aircraft has sent an Operational Status message
   (typically every few seconds, version 1/2 transponders only).
+  `squawk`/`emergency` come from ME28 and only appear if the aircraft is
+  actively squawking an emergency code (7500/7600/7700) or similar
+  priority status — most aircraft never send this message. `squawk` is
+  formatted as a 4-digit zero-padded hex string (`"7700"`), matching
+  readsb's wire format exactly.
 - Receiver-wide counters (frames seen, CRC failures, decoded, ring
   buffer drops, live aircraft count) are folded into the existing 1 Hz
   `{hostname}/status` publish (`src/main.cpp`), not a separate topic.
@@ -120,12 +135,8 @@ the physical module or over MQTT on device.**
 
 ## Deferred / not implemented
 
-- ME28 (emergency status), ME31 subtype 1 (surface operational status),
-  and position-message-derived NIC/RC (see above) — no consumer yet; add
-  later if needed.
-- `squawk` — DF17/18 doesn't carry squawk (that's DF5/DF21); the module
-  only emits DF17/18, so this field is always omitted. Kept in the
-  schema for readsb compatibility.
+- ME31 subtype 1 (surface operational status), and position-message-
+  derived NIC/RC (see above) — no consumer yet; add later if needed.
 - Local/relative CPR and any receiver-reference-position logic — this is
   a balloon-borne, moving receiver; a position feed may be added later
   to enable range gating, but isn't required for the global airborne CPR

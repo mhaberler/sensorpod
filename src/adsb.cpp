@@ -73,6 +73,9 @@ struct Aircraft {
   int sil = -1;
   int sil_type = -1;
 
+  // Emergency/priority status (ME28 mesub 1).
+  int emergency = -1;
+
   // CPR pairing state
   bool even_valid = false, odd_valid = false;
   int even_lat = 0, even_lon = 0, odd_lat = 0, odd_lon = 0;
@@ -280,8 +283,14 @@ static void adsb_process_frame(const char *hex, size_t hexlen) {
       ac->sil = mm.sil;
       ac->sil_type = mm.sil_type;
     }
+  } else if (mm.metype == 28 && mm.mesub == 1) {
+    if (mm.es_emergency_valid)
+      ac->emergency = mm.es_emergency;
+    if (mm.es_squawk_valid)
+      ac->squawk = mm.es_squawk;
   }
-  // DF4/5/20/21 squawk fields are not decoded (DF17/18 module output only).
+  // DF4/5/20/21 squawk fields are not decoded (DF17/18 module output only,
+  // ME28 mesub 1 above is the only DF17/18 source of squawk).
 }
 
 static void icao_to_hex(uint32_t icao, char *out /* 7 bytes */) {
@@ -307,8 +316,17 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
     doc["track"] = ac.track;
   if (ac.has_baro_rate)
     doc["baro_rate"] = ac.baro_rate;
-  if (ac.squawk >= 0)
-    doc["squawk"] = ac.squawk;
+  if (ac.squawk >= 0) {
+    char squawk_hex[5];
+    snprintf(squawk_hex, sizeof(squawk_hex), "%04x", (unsigned)ac.squawk);
+    doc["squawk"] = squawk_hex;
+  }
+  if (ac.emergency >= 0) {
+    static const char *emergency_names[] = {"none",    "general", "lifeguard",
+                                            "minfuel", "nordo",   "unlawful",
+                                            "downed",  "reserved"};
+    doc["emergency"] = emergency_names[ac.emergency < 8 ? ac.emergency : 7];
+  }
   if (ac.has_pos) {
     doc["lat"] = ac.lat;
     doc["lon"] = ac.lon;

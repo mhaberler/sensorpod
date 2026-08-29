@@ -6,6 +6,9 @@
 //    NACp, GVA, SIL/SIL-type, NIC-baro added to mode_s_msg. Bit offsets
 //    cross-checked against readsb's decodeESOperationalStatus()
 //    (mode_s.c), version 1/2 only - version 0 carries none of these.
+//  - ME28 mesub 1 (emergency/priority status): emergency code + ID13
+//    squawk field added to mode_s_msg. Bit offsets cross-checked
+//    against readsb's decodeESAircraftStatus().
 // See sensorpod ADSB.md for details.
 #ifndef __MODE_S_DECODER_H
 #define __MODE_S_DECODER_H
@@ -86,6 +89,15 @@ struct mode_s_msg {
   int sil_valid;
   int sil;      // Source Integrity Level (0-3).
   int sil_type; // 0 = per-hour, 1 = per-sample (version 2 only).
+
+  // ME28 (Aircraft Status), mesub 1 (Emergency/Priority Status).
+  int es_emergency_valid;
+  int es_emergency; // 0=none,1=general,2=lifeguard/medical,3=min fuel,
+                    // 4=no comms(7600),5=unlawful interference(7500),
+                    // 6=downed aircraft (DO-260B Table 2-42).
+  int es_squawk_valid;
+  int es_squawk; // Emergency squawk (from the ME28 ID13 field), same
+                 // decimal-as-octal convention as `identity` below.
 
   // DF4, DF5, DF20, DF21
   int fs;       // Flight status for DF4,5,20,21
