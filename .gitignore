@@ -11,3 +11,4 @@ compile_commands.json
 
 .mcp.json
 include/build_info.hpp
+.claude/settings.json

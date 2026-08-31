@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(clang-format -i src/adsb.cpp src/adsb.hpp src/main.cpp)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/cpr.h -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/cpr.h)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/cpr.c -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/cpr.c)",
+      "Bash(clang-format -i src/adsb.cpp src/adsb.hpp src/main.cpp src/cpr.h lib/libmodes/src/mode-s.c lib/libmodes/include/mode-s.h)",
+      "Bash(cc -I /Users/mah/Ballon/src/BalloonWare/kelvin/sensorpod/lib/libmodes/include -I /Users/mah/Ballon/src/BalloonWare/kelvin/sensorpod/src /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/test_decode.c /Users/mah/Ballon/src/BalloonWare/kelvin/sensorpod/lib/libmodes/src/mode-s.c /Users/mah/Ballon/src/BalloonWare/kelvin/sensorpod/src/cpr.c -lm -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/test_decode)",
+      "Bash(/private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/test_decode)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/mode_s.c -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/readsb_mode_s.c)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/json_out.c -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/json_out.c)",
+      "Bash(rm -rf /tmp/picomqtt_study)",
+      "Bash(git clone *)"
+    ]
+  }
+}
