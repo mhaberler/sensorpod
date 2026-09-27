@@ -11,9 +11,13 @@
 #include "freertos/task.h"
 #include "ringbuffer.hpp"
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+#include <BLE.h>
+#else
 #include <BLEAdvertisedDevice.h>
 #include <BLEDevice.h>
 #include <BLEScan.h>
+#endif
 
 #include "bthome_rx.hpp"
 #include "custom_decoder.hpp"
@@ -88,7 +92,11 @@ bool stringToHexString(const String &str, String &hexStr) {
 // ---------------------------------------------------------------------------
 struct BLEScanner::Impl {
   espidf::RingBuffer *queue = nullptr;
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+  BLEScan pBLEScan;
+#else
   BLEScan *pBLEScan = nullptr;
+#endif
   const char *bthKey = "";
 
   uint32_t scanTimeMs = 15000;
@@ -182,82 +190,96 @@ static bool dedupDrop(const std::string &mac, const uint8_t *payload,
 // ---------------------------------------------------------------------------
 // BLE scan callback — enqueues raw advertisement data as MsgPack
 // ---------------------------------------------------------------------------
-class ScanCallback : public BLEAdvertisedDeviceCallbacks {
-  String convertServiceData(const String &deviceServiceData) {
-    String out;
-    out.reserve(2 * deviceServiceData.length());
-    char byte[3];
-    for (size_t i = 0; i < deviceServiceData.length(); i++) {
-      snprintf(byte, sizeof(byte), "%.2x", (unsigned char)deviceServiceData[i]);
-      out += byte;
-    }
-    return out;
+static void onAdvertised(BLEAdvertisedDevice advertisedDevice) {
+  // Serial.printf("Advertised Device: %s \n",
+  // advertisedDevice.toString().c_str());
+  String mac_adress = advertisedDevice.getAddress().toString().c_str();
+  mac_adress.toLowerCase();
+
+  if (dedupDrop(mac_adress.c_str(), advertisedDevice.getPayload(),
+                advertisedDevice.getPayloadLength())) {
+    if (s_impl)
+      s_impl->dedupDrops++;
+    return;
   }
 
+  JsonDocument doc;
+  JsonObject BLEdata = doc.to<JsonObject>();
+  BLEdata["id"] = (char *)mac_adress.c_str();
+
+  if (advertisedDevice.haveName())
+    BLEdata["name"] = (char *)advertisedDevice.getName().c_str();
+
+  if (advertisedDevice.haveManufacturerData()) {
+    String hexData;
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+    size_t mfdLen = 0;
+    const uint8_t *mfd = advertisedDevice.getManufacturerData(&mfdLen);
+    bytesToHexString(mfd, mfdLen, hexData);
+#else
+    char *manufacturerdata = BLEUtils::buildHexData(
+        NULL, (uint8_t *)advertisedDevice.getManufacturerData().c_str(),
+        advertisedDevice.getManufacturerData().length());
+    hexData = manufacturerdata;
+    free(manufacturerdata);
+#endif
+    BLEdata["manufacturerdata"] = hexData;
+  }
+
+  BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
+
+  if (advertisedDevice.haveTXPower())
+    BLEdata["txpower"] = (int8_t)advertisedDevice.getTXPower();
+
+  if (advertisedDevice.haveServiceData()) {
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+    int serviceDataCount = advertisedDevice.getServiceDataCount();
+#else
+    int serviceDataCount = advertisedDevice.getServiceDataUUIDCount();
+#endif
+    for (int j = 0; j < serviceDataCount; j++) {
+      String hexData;
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+      size_t sdLen = 0;
+      const uint8_t *sd = advertisedDevice.getServiceData(j, &sdLen);
+      bytesToHexString(sd, sdLen, hexData);
+#else
+      stringToHexString(advertisedDevice.getServiceData(j), hexData);
+#endif
+      BLEdata["servicedata"] = hexData;
+      BLEdata["servicedatauuid"] =
+          advertisedDevice.getServiceDataUUID(j).toString();
+    }
+  }
+  BLEdata["time"] = fseconds();
+  void *ble_adv = nullptr;
+  size_t total = measureMsgPack(BLEdata);
+  if (s_impl->queue->send_acquire((void **)&ble_adv, total, 1) != pdTRUE) {
+    s_impl->acquireFail++;
+    return;
+  }
+  size_t n = serializeMsgPack(BLEdata, ble_adv, total);
+  if (n != total)
+    log_e("serializeMsgPack: expected %u got %u", total, n);
+  // Always complete the acquired slot, even on a size mismatch — a
+  // dangling acquire never gets returned by FreeRTOS and permanently
+  // wedges a no-split ring buffer (every later send_acquire fails).
+  // The consumer's deserializeMsgPack() error check handles a garbage
+  // item gracefully.
+  if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
+    s_impl->queueFull++;
+  } else {
+    s_impl->queue->update_high_watermark();
+  }
+}
+
+#if ESP_ARDUINO_VERSION_MAJOR < 4
+class ScanCallback : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) override {
-    // Serial.printf("Advertised Device: %s \n",
-    // advertisedDevice.toString().c_str());
-    String mac_adress = advertisedDevice.getAddress().toString().c_str();
-    mac_adress.toLowerCase();
-
-    if (dedupDrop(mac_adress.c_str(), advertisedDevice.getPayload(),
-                  advertisedDevice.getPayloadLength())) {
-      if (s_impl)
-        s_impl->dedupDrops++;
-      return;
-    }
-
-    JsonDocument doc;
-    JsonObject BLEdata = doc.to<JsonObject>();
-    BLEdata["id"] = (char *)mac_adress.c_str();
-
-    if (advertisedDevice.haveName())
-      BLEdata["name"] = (char *)advertisedDevice.getName().c_str();
-
-    if (advertisedDevice.haveManufacturerData()) {
-      char *manufacturerdata = BLEUtils::buildHexData(
-          NULL, (uint8_t *)advertisedDevice.getManufacturerData().c_str(),
-          advertisedDevice.getManufacturerData().length());
-      BLEdata["manufacturerdata"] = manufacturerdata;
-      free(manufacturerdata);
-    }
-
-    BLEdata["rssi"] = (int)advertisedDevice.getRSSI();
-
-    if (advertisedDevice.haveTXPower())
-      BLEdata["txpower"] = (int8_t)advertisedDevice.getTXPower();
-
-    if (advertisedDevice.haveServiceData()) {
-      int serviceDataCount = advertisedDevice.getServiceDataCount();
-      for (int j = 0; j < serviceDataCount; j++) {
-        BLEdata["servicedata"] =
-            convertServiceData(advertisedDevice.getServiceData(j));
-        BLEdata["servicedatauuid"] =
-            advertisedDevice.getServiceDataUUID(j).toString();
-      }
-    }
-    BLEdata["time"] = fseconds();
-    void *ble_adv = nullptr;
-    size_t total = measureMsgPack(BLEdata);
-    if (s_impl->queue->send_acquire((void **)&ble_adv, total, 1) != pdTRUE) {
-      s_impl->acquireFail++;
-      return;
-    }
-    size_t n = serializeMsgPack(BLEdata, ble_adv, total);
-    if (n != total)
-      log_e("serializeMsgPack: expected %u got %u", total, n);
-    // Always complete the acquired slot, even on a size mismatch — a
-    // dangling acquire never gets returned by FreeRTOS and permanently
-    // wedges a no-split ring buffer (every later send_acquire fails).
-    // The consumer's deserializeMsgPack() error check handles a garbage
-    // item gracefully.
-    if (s_impl->queue->send_complete(ble_adv) != pdTRUE) {
-      s_impl->queueFull++;
-    } else {
-      s_impl->queue->update_high_watermark();
-    }
+    onAdvertised(advertisedDevice);
   }
 };
+#endif
 
 // ---------------------------------------------------------------------------
 // Scan task (runs on its own RTOS task until end() requests stop)
@@ -266,6 +288,20 @@ static void scanTask(void *param) {
   auto *impl = static_cast<BLEScanner::Impl *>(param);
   impl->taskRunning = true;
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+  BLE.begin("");
+  impl->pBLEScan = BLE.getScan();
+  impl->pBLEScan.onResult(onAdvertised);
+  impl->pBLEScan.setActiveScan(impl->activeScan);
+  impl->pBLEScan.setInterval(impl->scanInterval);
+  impl->pBLEScan.setWindow(impl->scanWindow);
+
+  while (!impl->stopRequested) {
+    impl->pBLEScan.startBlocking(impl->scanTimeMs);
+    impl->pBLEScan.clearResults();
+    delay(1);
+  }
+#else
   BLEDevice::init("");
   impl->pBLEScan = BLEDevice::getScan();
   impl->pBLEScan->setAdvertisedDeviceCallbacks(new ScanCallback(), true, true);
@@ -278,8 +314,9 @@ static void scanTask(void *param) {
     impl->pBLEScan->clearResults();
     delay(1);
   }
-
   impl->pBLEScan = nullptr;
+#endif
+
   impl->taskHandle = nullptr;
   impl->taskRunning = false;
   vTaskDelete(nullptr);
@@ -380,8 +417,12 @@ void BLEScanner::end() {
     return;
 
   _impl->stopRequested = true;
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+  _impl->pBLEScan.stop();
+#else
   if (_impl->pBLEScan)
     _impl->pBLEScan->stop();
+#endif
 
   // Wait for scanTask to finish (blocking scan window is ~1s).
   const uint32_t deadline = millis() + 5000;
@@ -395,8 +436,12 @@ void BLEScanner::end() {
     _impl->taskRunning = false;
   }
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 4
+  BLE.end(true);
+#else
   BLEDevice::deinit(true);
   _impl->pBLEScan = nullptr;
+#endif
   _impl->stopRequested = false;
   _started = false;
   log_i("BLE scanner stopped");
