@@ -12,3 +12,5 @@ compile_commands.json
 .mcp.json
 include/build_info.hpp
 .claude/settings.json
+AGENT_LEARNINGS.md
+UBIQUITOUS_LANGUAGE.md
