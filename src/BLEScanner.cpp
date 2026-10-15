@@ -15,7 +15,7 @@
 #include <BLEDevice.h>
 #include <BLEScan.h>
 
-#include "BTHomeDecoder.h"
+#include "bthome_rx.hpp"
 #include "custom_decoder.hpp"
 #include "decoder.h"
 #include "deviceconfig.hpp"
@@ -78,7 +78,6 @@ static void bytesToHexString(const uint8_t *data, size_t len, String &hexStr) {
   }
 }
 
-// // Non-static — also used by BTHomeDecoder.cpp
 bool stringToHexString(const String &str, String &hexStr) {
   bytesToHexString((const uint8_t *)str.c_str(), str.length(), hexStr);
   return true;
@@ -90,7 +89,6 @@ bool stringToHexString(const String &str, String &hexStr) {
 struct BLEScanner::Impl {
   espidf::RingBuffer *queue = nullptr;
   BLEScan *pBLEScan = nullptr;
-  BTHomeDecoder bthDecoder;
   const char *bthKey = "";
 
   uint32_t scanTimeMs = 15000;
@@ -107,6 +105,7 @@ struct BLEScanner::Impl {
   uint32_t received = 0;
   uint32_t decodedTheengs = 0;
   uint32_t decodedBTHome = 0;
+  bthome_rx::Stats bth;
   uint32_t decodedCustom = 0;
   uint32_t rawAds = 0;
   uint32_t dedupDrops = 0;
@@ -118,7 +117,7 @@ static BLEScanner::Impl *s_impl = nullptr;
 static TheengsDecoder decoder;
 
 static bool decodeBTHome(JsonObject BLEdata, JsonDocument &json,
-                         BTHomeDecoder &decoder, const char *key) {
+                         bthome_rx::Stats &stats, const char *key) {
   // Guard: a null id would throw std::logic_error from the implicit
   // JsonVariant -> std::string conversion and abort the firmware.
   const char *id = BLEdata["id"].as<const char *>();
@@ -129,24 +128,7 @@ static bool decodeBTHome(JsonObject BLEdata, JsonDocument &json,
   if (!hexStringToVector(BLEdata["servicedata"], sd))
     return false;
 
-  BTHomeDecodeResult bthRes =
-      decoder.parseBTHomeV2(std::string(sd.begin(), sd.end()), id, key);
-
-  if (bthRes.isBTHome && bthRes.decryptionSucceeded) {
-    JsonObject root = json.to<JsonObject>();
-    root["bthome_version"] = bthRes.bthomeVersion;
-    JsonArray measArr = root["measurements"].to<JsonArray>();
-
-    for (auto &m : bthRes.measurements) {
-      JsonObject obj = measArr.add<JsonObject>();
-      obj["object_id"] = m.objectID;
-      obj["name"] = m.name;
-      obj["value"] = m.value;
-      obj["unit"] = m.unit;
-    }
-    return true;
-  }
-  return false;
+  return bthome_rx::decode(sd.data(), sd.size(), id, key, json, stats);
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +322,9 @@ BLEScanner::Stats BLEScanner::stats() const {
   s.received = _impl->received;
   s.decodedTheengs = _impl->decodedTheengs;
   s.decodedBTHome = _impl->decodedBTHome;
+  s.bthomeReplay = _impl->bth.replay;
+  s.bthomeAuthFail = _impl->bth.authFail;
+  s.bthomeIncomplete = _impl->bth.incomplete;
   s.decodedCustom = _impl->decodedCustom;
   s.rawAds = _impl->rawAds;
   s.dedupDrops = _impl->dedupDrops;
@@ -354,6 +339,7 @@ void BLEScanner::clearStats() {
   _impl->received = 0;
   _impl->decodedTheengs = 0;
   _impl->decodedBTHome = 0;
+  _impl->bth = {};
   _impl->decodedCustom = 0;
   _impl->rawAds = 0;
   _impl->dedupDrops = 0;
@@ -439,7 +425,7 @@ bool BLEScanner::deliver(JsonDocument &inDoc, JsonDocument &outDoc) {
   case DeviceConfig::BLE_DECODER_BTHOME:
     if (BLEdata["servicedatauuid"].is<const char *>() &&
         String(BLEdata["servicedatauuid"]).indexOf("fcd2") != -1 &&
-        decodeBTHome(BLEdata, outDoc, _impl->bthDecoder, _impl->bthKey)) {
+        decodeBTHome(BLEdata, outDoc, _impl->bth, _impl->bthKey)) {
       _impl->decodedBTHome++;
       return true;
     }

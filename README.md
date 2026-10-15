@@ -208,7 +208,7 @@ SensorPod continuously scans for BLE advertisements on a dedicated FreeRTOS task
 - **BLE scanning** (on/off, reboot to apply): gates the whole scanner at boot.
 - **Decoder** (radio button, applied immediately):
     - **Theengs decoder** (default) — the [Theengs Decoder](https://github.com/theengs/decoder) library, ~120 device models (Xiaomi, Govee, RuuviTag, SwitchBot, …)
-    - **BTHomeV2 decoder** — [BTHome v2](https://bthome.io/) advertisements, optional AES-CCM decryption
+    - **BTHomeV2 decoder** — [BTHome v2](https://bthome.io/) advertisements via [bthome-cpp](https://github.com/mvoss96/bthome-cpp); optional AES-CCM decryption with per-sender replay protection (repeated encrypted adverts are dropped and counted). Sensors, binary sensors and button/dimmer/command events are published; text/raw objects are skipped; `incomplete: true` marks adverts cut short by an unknown or truncated object
     - **Custom decoder** — hand-written decoders in `src/custom_decoder.cpp`; currently Mikrotik TG-BT5-IN/-OUT tags and Qingping sensors (CGG1, CGH1, CGP1W, CGD1, CGDN1, CGPR1)
     - **Undecoded advertisements** — no decoding, every advertisement published raw
 - **Retain undecoded advertisements**: when the selected decoder doesn't claim an advertisement, publish it raw instead of dropping it.
@@ -280,6 +280,7 @@ sensorpod/
 │   ├── mqtt_device.hpp     # Abstract MQTT interface (Broker/Client polymorphism)
 │   ├── BLEScanner.cpp/.h   # BLE scan task, dedup, decoder dispatch (Theengs/BTHome/custom/raw)
 │   ├── BLE.cpp             # scanner glue: drain queue, publish ble/<mac>
+│   ├── bthome_rx.cpp/.hpp  # BTHome v2 receive: bthome-cpp decode, decrypt, JSON
 │   ├── custom_decoder.cpp  # hand-written decoders (Mikrotik TG-BT5, Qingping)
 │   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, BLE options
 │   ├── mdns_state.hpp      # mDNS service struct + externs
@@ -301,7 +302,7 @@ Resolved automatically via `lib_deps` in `platformio.ini`:
 - **[PicoMQTT](https://github.com/mlesniew/PicoMQTT)** + **[PicoWebsocket](https://github.com/mlesniew/PicoWebsocket)** — embedded broker + WS transport
 - **[MycilaLogger](https://github.com/mathieucarbou/MycilaLogger)** + **[MycilaWebSerial](https://github.com/mhaberler/MycilaWebSerial)** — leveled logging to Serial + `/webserial`
 - **[Theengs Decoder](https://github.com/theengs/decoder)** — BLE advertisement device database / JSON decode path
-- **[BTHomeDecoder](https://github.com/mhaberler/BTHomeDecoder)** (`arduino-lib` branch) — BTHome v2 decode (optional AES)
+- **[bthome-cpp](https://github.com/mvoss96/bthome-cpp)** — BTHome v2 decode (optional AES, replay protection)
 - **[Improv-WiFi-Library](https://github.com/mhaberler/Improv-WiFi-Library)** — serial provisioning protocol
 - **[OneButton](https://github.com/mathertel/OneButton)** — debounced button + long-press detection
 - **[Adafruit_VL53L0X](https://github.com/adafruit/Adafruit_VL53L0X)** — time-of-flight distance sensor driver

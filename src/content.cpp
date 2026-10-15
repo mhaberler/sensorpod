@@ -390,6 +390,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<li>Advertisements received: %u</li>", bs.received);
     appendf(out, "<li>Decoded (Theengs): %u</li>", bs.decodedTheengs);
     appendf(out, "<li>Decoded (BTHomeV2): %u</li>", bs.decodedBTHome);
+    appendf(out, "<li>BTHome replay/auth fail/incomplete: %u/%u/%u</li>",
+            bs.bthomeReplay, bs.bthomeAuthFail, bs.bthomeIncomplete);
     appendf(out, "<li>Decoded (custom): %u</li>", bs.decodedCustom);
     appendf(out, "<li>Raw (undecoded): %u</li>", bs.rawAds);
     appendf(out, "<li>Dedup drops: %u</li>", bs.dedupDrops);

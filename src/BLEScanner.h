@@ -88,6 +88,9 @@ public:
     uint32_t received;       ///< Total messages dequeued
     uint32_t decodedTheengs; ///< Decoded by the Theengs decoder
     uint32_t decodedBTHome;  ///< Decoded as BTHome v2
+    uint32_t bthomeReplay;   ///< Encrypted BTHome adverts dropped as replays
+    uint32_t bthomeAuthFail; ///< Encrypted BTHome adverts failing the MIC check
+    uint32_t bthomeIncomplete; ///< BTHome decodes cut short (unknown id/truncated)
     uint32_t decodedCustom;  ///< Decoded by the custom decoder
     uint32_t rawAds;         ///< Advertisements no decoder claimed
     uint32_t dedupDrops;     ///< Advertisements dropped by dedup
