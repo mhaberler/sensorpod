@@ -68,8 +68,16 @@ The reader task decouples UART draining from those main-loop stalls.
   2. ME19 (airborne velocity) subtype 1/2: `geo_minus_baro` field added
      to `struct mode_s_msg`, giving geometric altitude via
      `alt_baro + (geo_minus_baro, signed)`.
-  3. **Deferred, not decoded**: ME28 (emergency/status), ME31
-     (operational status / NIC / NAC quality indicators).
+  3. ME31 (Operational Status) subtype 0 (airborne), version 1/2: ADS-B
+     version, NIC supplement-A, NACp, GVA, SIL/SIL-type, NIC-baro added
+     to `struct mode_s_msg`. Version 0 carries none of these fields, so
+     they're left unset for it. Bit offsets cross-checked against
+     readsb's own `decodeESOperationalStatus()` and validated with a
+     synthetic CRC-valid test frame (every field round-trips correctly).
+  4. **Deferred, not decoded**: ME28 (emergency/status), ME31 subtype 1
+     (surface operational status), and position-message-derived NIC/RC
+     (readsb computes these per `metype` + version from a separate
+     lookup table in `track.c`, which isn't ported).
 - `src/cpr.c` / `src/cpr.h` — readsb's CPR position solver, ported
   **verbatim** (GPL-3, same license as this repo). Only
   `decodeCPRairborne()` is used: global position solve from an even/odd
@@ -93,8 +101,12 @@ The reader task decouples UART draining from those main-loop stalls.
   using the default.
 - JSON schema: readsb `aircraft.json` field names, subset —
   `hex`, `flight`, `category`, `alt_baro`, `alt_geom`, `gs`, `track`,
-  `baro_rate`, `squawk`, `lat`, `lon`, `seen_pos`, `seen`, `messages`.
+  `baro_rate`, `squawk`, `lat`, `lon`, `seen_pos`, `version`, `nic_baro`,
+  `nac_p`, `sil`, `sil_type`, `gva`, `seen`, `messages`.
   Fields are omitted (not zero-filled) until decoded at least once.
+  `version`/`nic_baro`/`nac_p`/`sil`/`sil_type`/`gva` come from ME31 and
+  only appear once an aircraft has sent an Operational Status message
+  (typically every few seconds, version 1/2 transponders only).
 - Receiver-wide counters (frames seen, CRC failures, decoded, ring
   buffer drops, live aircraft count) are folded into the existing 1 Hz
   `{hostname}/status` publish (`src/main.cpp`), not a separate topic.
@@ -108,8 +120,9 @@ the physical module or over MQTT on device.**
 
 ## Deferred / not implemented
 
-- ME28 (emergency status) and ME31 (NIC/NAC/SIL quality indicators) —
-  no consumer yet; add later if needed.
+- ME28 (emergency status), ME31 subtype 1 (surface operational status),
+  and position-message-derived NIC/RC (see above) — no consumer yet; add
+  later if needed.
 - `squawk` — DF17/18 doesn't carry squawk (that's DF5/DF21); the module
   only emits DF17/18, so this field is always omitted. Kept in the
   schema for readsb compatibility.

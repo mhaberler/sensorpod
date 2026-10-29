@@ -2,6 +2,10 @@
 // itself a refactor of antirez/dump1090). Patched for sensorpod:
 //  - DF18 (CF 0/1/2/6) aliased into the DF17 ME-decode path
 //  - ME19 mesub 1/2: geo_minus_baro (25 ft units) added to mode_s_msg
+//  - ME31 mesub 0 (airborne operational status): ADS-B version, NIC-A,
+//    NACp, GVA, SIL/SIL-type, NIC-baro added to mode_s_msg. Bit offsets
+//    cross-checked against readsb's decodeESOperationalStatus()
+//    (mode_s.c), version 1/2 only - version 0 carries none of these.
 // See sensorpod ADSB.md for details.
 #ifndef __MODE_S_DECODER_H
 #define __MODE_S_DECODER_H
@@ -67,6 +71,21 @@ struct mode_s_msg {
   int geo_minus_baro_valid; // 1 if geo_minus_baro is present (ME19 sub 1/2).
   int geo_minus_baro_sign;  // 1 = GNSS alt below baro alt.
   int geo_minus_baro;       // |geometric - barometric| altitude, feet.
+
+  // ME31 (Operational Status), mesub 0 (airborne) only, version 1/2.
+  int opstatus_valid;   // 1 if the fields below are populated.
+  int opstatus_version; // ADS-B version (0/1/2, from ME bits 41-43).
+  int nic_a_valid;
+  int nic_a; // NIC supplement A.
+  int nac_p_valid;
+  int nac_p; // Navigation Accuracy Category, position (0-11).
+  int gva_valid;
+  int gva; // Geometric Vertical Accuracy (version 2 only).
+  int nic_baro_valid;
+  int nic_baro; // Barometric altitude integrity.
+  int sil_valid;
+  int sil;      // Source Integrity Level (0-3).
+  int sil_type; // 0 = per-hour, 1 = per-sample (version 2 only).
 
   // DF4, DF5, DF20, DF21
   int fs;       // Flight status for DF4,5,20,21
