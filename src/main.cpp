@@ -1,3 +1,6 @@
+#ifdef ADSB_UART
+#include "adsb.hpp"
+#endif
 #if __has_include(<M5Unified.h>)
 #define HAS_M5UNIFIED
 #include <M5Unified.h>
@@ -142,6 +145,10 @@ void setup() {
   ledSetup();
 
   // Read device role early
+#ifdef ADSB_UART
+  adsb_setup();
+#endif
+
   is_broker_mode = DeviceConfig::isBrokerMode();
   wifi_sleep_enabled = DeviceConfig::isWifiSleepEnabled();
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
@@ -198,6 +205,10 @@ void setup() {
 
 void loop() {
   improvSerial.handleSerial();
+
+#ifdef ADSB_UART
+  adsb_loop();
+#endif
 
   unsigned long now = millis();
   button_loop();
