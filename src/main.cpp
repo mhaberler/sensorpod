@@ -244,6 +244,15 @@ void loop() {
       doc["clicks"] = numClicks;
       numClicks = 0;
     }
+#ifdef ADSB_UART
+    AdsbStats adsb_stats = adsb_get_stats();
+    doc["adsb_frames"] = adsb_stats.frames_seen;
+    doc["adsb_crc_fail"] = adsb_stats.crc_fail;
+    doc["adsb_decoded"] = adsb_stats.decoded;
+    doc["adsb_dropped_lines"] = adsb_stats.dropped_lines;
+    doc["adsb_dropped_overflow"] = adsb_stats.dropped_overflow;
+    doc["adsb_aircraft"] = adsb_stats.aircraft_count;
+#endif
     String payload;
     serializeJson(doc, payload);
     mqtt_publish("status", payload.c_str());
