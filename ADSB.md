@@ -49,6 +49,39 @@ max), but `loop()` can stall for 100+ ms during OTA writes or a slow HTTP
 response — long enough to overflow a buffer sized for the average case.
 The reader task decouples UART draining from those main-loop stalls.
 
+### USB dongle ingest (`src/adsb_usb.cpp`, `-DADSB_USB`)
+
+Dongle variant of the same receiver: module behind an FTDI FT232H
+(`0403:6014`, high speed, bulk IN MPS 512), same 921600 8N1 `*<hex>;`
+stream (lines end in `\r\n`, ignored by the framer). Enabled in
+`esp32p4_waveshare_devkit_adsb`; UART stays compiled in as fallback.
+
+- P4 USB host on the HS OTG port (`peripheral_map = 0` = default HS),
+  ESP-IDF USB Host Library from the prebuilt Arduino libs (hubs supported,
+  no lib rebuild). `enum_filter_cb` is mandatory: Arduino ≥3.3.11 builds
+  with `CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK`, NULL filter = nothing
+  enumerates.
+- Own minimal FTDI driver (no CDC/VCP component): accepts any VID 0x0403,
+  chip from `bcdDevice` (FT232BM/R/X, FT2232C/H, FT4232H, FT232H), baud
+  divisor via libftdi's `ftdi_to_clkbits` (921600 → 923077 actual on both
+  48 MHz and 120 MHz clocks). Config: reset, baud, 8N1, no flow control,
+  latency timer 2 ms, DTR+RTS asserted (dongle doesn't care), purge.
+- 4 × 512-byte bulk IN transfers in flight; 2 FTDI status bytes stripped
+  from every MPS chunk (idle packets are just `02 60`).
+- **Takeover**: framing split into per-source `AdsbFramer` instances.
+  While the dongle is attached, the UART reader keeps draining but discards
+  its bytes; on unplug (`DEV_GONE`) transfers are flushed/freed and the
+  UART source resumes. Only the first FTDI device is used.
+- Logging (`log_w`, project runs `CORE_DEBUG_LEVEL=2`): connect line
+  (addr, hub port, VID:PID, chip, speed, EP/MPS, actual baud), ignored
+  non-FTDI devices, control-request failures, disconnect line (duration,
+  frames, fallback), first raw chunk hex-dumped, and the first 5 frames
+  after every source switch as `ADS-B[usb|uart] #n: *…;`.
+- `{hostname}/status` gains `adsb_source` (`usb`/`uart`) and
+  `adsb_usb_frames`.
+- Harmless at boot: `E ENUM: Short string desc corrupt` ×3 from the
+  FT232H's string descriptors.
+
 ### Mode-S decode
 
 - `lib/libmodes/` — vendored [Displacer/libmodes](https://github.com/Displacer/libmodes)
@@ -132,6 +165,10 @@ Both `m5stack-nanoc6` (default) and `esp32p4_waveshare_devkit` build clean.
 Decoder verified standalone against known-good DF17 test frames (CRC ok,
 ICAO/altitude/callsign/CPR position all correct). **Not yet tested against
 the physical module or over MQTT on device.**
+
+USB dongle verified on hardware (Waveshare P4, FT232H dongle): enumerates
+at boot, configured, valid DF17 frames framed into the decoder. Unplug →
+UART fallback and re-plug not yet exercised on hardware.
 
 ## Deferred / not implemented
 

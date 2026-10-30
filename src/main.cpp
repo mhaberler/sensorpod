@@ -252,6 +252,10 @@ void loop() {
     doc["adsb_dropped_lines"] = adsb_stats.dropped_lines;
     doc["adsb_dropped_overflow"] = adsb_stats.dropped_overflow;
     doc["adsb_aircraft"] = adsb_stats.aircraft_count;
+#ifdef ADSB_USB
+    doc["adsb_source"] = adsb_stats.usb_active ? "usb" : "uart";
+    doc["adsb_usb_frames"] = adsb_stats.usb_frames;
+#endif
 #endif
     String payload;
     serializeJson(doc, payload);

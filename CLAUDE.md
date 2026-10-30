@@ -73,6 +73,9 @@ Multi-file Arduino sketch. Current sources:
   added to default + release envs). Uses Arduino `Update.h`, expects
   `*_ota.bin` (app-only image, not the merged `*_firmware.bin`), CSRF-checks
   `Origin` vs `Host`, reboots on success.
+- `src/adsb_usb.cpp` — (`-DADSB_USB`, P4) USB-host minimal FTDI driver; an
+  attached FTDI ADS-B dongle (also via hub) takes over from the UART source
+  in `adsb.cpp` until unplugged.
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
   prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).

@@ -1,4 +1,5 @@
 #include "adsb.hpp"
+#include "adsb_usb.hpp"
 
 #ifdef ADSB_UART
 
@@ -28,6 +29,9 @@ extern "C" {
 #define ADSB_RX_BUF_SIZE 16384
 #define ADSB_RINGBUF_SIZE 8192
 #define ADSB_MAX_LINE 32 // "*" + 28 hex chars (112 bit frame) + ";"
+#ifndef ADSB_LOG_FIRST_LINES
+#define ADSB_LOG_FIRST_LINES 5
+#endif
 
 #define ADSB_MAX_AIRCRAFT 100
 #define ADSB_AIRCRAFT_TTL_MS 60000
@@ -104,49 +108,112 @@ static Aircraft *aircraft_find_or_create(uint32_t icao) {
   return free_slot; // nullptr if table full; frame is then dropped
 }
 
-static void adsb_reader_task(void *arg) {
+// Byte-stream -> "*<hex>;" frame splitter. One instance per source (UART,
+// USB) so each reader task owns its framing state; only the active source
+// feeds the ring buffer. The first ADSB_LOG_FIRST_LINES frames after each
+// (re)activation are echoed to the console for wiring/baud sanity checks.
+struct AdsbFramer {
+  const char *name;
   char line[ADSB_MAX_LINE];
   size_t len = 0;
   bool in_frame = false;
+  uint32_t frames = 0; // frames since last reset
+};
 
-  for (;;) {
-    int c = adsb_serial.read();
-    if (c < 0) {
-      // Nothing pending right now; block briefly to give up the CPU.
-      vTaskDelay(pdMS_TO_TICKS(1));
-      continue;
-    }
+static void framer_reset(AdsbFramer &f) {
+  f.len = 0;
+  f.in_frame = false;
+  f.frames = 0;
+}
+
+static void adsb_feed(AdsbFramer &f, const uint8_t *buf, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    char c = (char)buf[i];
 
     if (c == '*') {
       // Start of a new frame; discard any partial garbage in progress.
-      in_frame = true;
-      len = 0;
+      f.in_frame = true;
+      f.len = 0;
       continue;
     }
 
-    if (!in_frame)
+    if (!f.in_frame)
       continue;
 
     if (c == ';') {
-      in_frame = false;
-      if (len > 0) {
-        if (xRingbufferSend(adsb_ringbuf, line, len, 0) != pdTRUE)
+      f.in_frame = false;
+      if (f.len > 0) {
+        if (f.frames < ADSB_LOG_FIRST_LINES)
+          log_w("ADS-B[%s] #%u: *%.*s;", f.name, (unsigned)f.frames + 1,
+                (int)f.len, f.line);
+        f.frames++;
+        if (xRingbufferSend(adsb_ringbuf, f.line, f.len, 0) != pdTRUE)
           adsb_dropped_overflow++;
       }
-      len = 0;
+      f.len = 0;
       continue;
     }
 
-    if (len < ADSB_MAX_LINE) {
-      line[len++] = (char)c;
+    if (f.len < ADSB_MAX_LINE) {
+      f.line[f.len++] = c;
     } else {
       // Frame too long for a Mode-S line; drop it and resync on next '*'.
-      in_frame = false;
-      len = 0;
+      f.in_frame = false;
+      f.len = 0;
       adsb_dropped_lines++;
     }
   }
 }
+
+static AdsbFramer uart_framer = {"uart"};
+static volatile bool adsb_usb_active = false;
+
+static void adsb_reader_task(void *arg) {
+  uint8_t buf[256];
+  bool was_usb = false;
+
+  for (;;) {
+    int avail = adsb_serial.available();
+    if (avail <= 0) {
+      // Nothing pending right now; block briefly to give up the CPU.
+      vTaskDelay(pdMS_TO_TICKS(1));
+      continue;
+    }
+    int n =
+        adsb_serial.read(buf, avail < (int)sizeof(buf) ? avail : sizeof(buf));
+    bool usb = adsb_usb_active;
+    if (usb != was_usb) {
+      // Source switch: restart framing and first-line logging.
+      framer_reset(uart_framer);
+      was_usb = usb;
+    }
+    if (usb)
+      continue; // USB dongle owns the ring buffer; discard UART bytes
+    if (n > 0)
+      adsb_feed(uart_framer, buf, n);
+  }
+}
+
+#ifdef ADSB_USB
+static AdsbFramer usb_framer = {"usb"};
+static uint32_t adsb_usb_frames = 0;
+
+void adsb_source_usb_attached() {
+  framer_reset(usb_framer);
+  adsb_usb_active = true;
+}
+
+uint32_t adsb_source_usb_detached() {
+  adsb_usb_active = false;
+  adsb_usb_frames += usb_framer.frames;
+  return usb_framer.frames;
+}
+
+void adsb_feed_usb(const uint8_t *buf, size_t n) {
+  if (adsb_usb_active)
+    adsb_feed(usb_framer, buf, n);
+}
+#endif
 
 void adsb_setup() {
   adsb_ringbuf = xRingbufferCreate(ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT);
@@ -165,6 +232,9 @@ void adsb_setup() {
 
   log_i("ADS-B UART started at %d baud (rx=%d tx=%d)", ADSB_BAUD, ADSB_RX_PIN,
         ADSB_TX_PIN);
+#ifdef ADSB_USB
+  adsb_usb_setup();
+#endif
 }
 
 static int hex_nibble(char c) {
@@ -414,6 +484,10 @@ AdsbStats adsb_get_stats() {
     if (ac.used)
       count++;
   s.aircraft_count = count;
+#ifdef ADSB_USB
+  s.usb_active = adsb_usb_active;
+  s.usb_frames = adsb_usb_frames + (adsb_usb_active ? usb_framer.frames : 0);
+#endif
   return s;
 }
 

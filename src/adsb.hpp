@@ -12,6 +12,8 @@ struct AdsbStats {
   uint32_t dropped_lines;    // oversize/garbage frames (reader task)
   uint32_t dropped_overflow; // ring buffer full (reader task)
   uint32_t aircraft_count;   // live entries in the aircraft table
+  bool usb_active = false;   // USB FTDI dongle is the current frame source
+  uint32_t usb_frames = 0;   // frames framed from the USB dongle
 };
 
 AdsbStats adsb_get_stats();
