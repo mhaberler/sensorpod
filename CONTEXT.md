@@ -8,7 +8,7 @@
 - Optionally connects as STA to a home network
 - Announces itself via mDNS (`_mqtt._tcp`, `_mqtt-ws._tcp`, `_http._tcp`)
 - Web UI accessible via AP
-- Sensors publish to local broker with `hostName/` prefix
+- Sensors publish to local broker (optional `hostName/` prefix)
 
 **Client Mode**
 - Device connects to a remote MQTT broker (via PicoMQTT::Client)
@@ -16,14 +16,14 @@
 - Always runs WiFi AP for configuration access
 - Requires STA connection to reach the remote broker
 - Web UI accessible via AP, shows discovered brokers
-- Sensors publish to remote broker with `hostName/` prefix
+- Sensors publish to remote broker (optional `hostName/` prefix)
 
 ## Key Decisions
 
 - **Single firmware**: Both roles in one binary; role selected at boot via Preferences, requires reboot to switch
 - **AP always on**: Both modes keep AP running for configuration access (time-limited to infinity for now)
 - **Shared WiFi primitives**: `start_ap()`, `start_sta()` helpers extracted for reuse
-- **Topic prefixing**: All published topics prefixed with `hostName/` in both modes
+- **Topic prefixing**: Optional `hostName/` prefix on all published topics, both modes; NVS flag, default off, toggled live from web UI
 - **Broker discovery**: Only in Client mode; Broker mode does not discover other brokers
 - **STA optional in Broker**: AP-only operation supported if no WiFi credentials
 
@@ -34,3 +34,5 @@ Unified settings on `/` (sysinfo page) showing:
 - Role switch button (with implied reboot)
 - If Client mode: discovered brokers list, which is connected, broker selection
 - Reboot button
+- Topic prefix checkbox (applied live)
+- I2C scan button with bus/address table

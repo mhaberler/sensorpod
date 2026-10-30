@@ -45,7 +45,7 @@ normal. Creds stored in NVS `Preferences` namespace `wifi-creds`.
 
 Multi-file Arduino sketch. Current sources:
 
-- `src/main.cpp` — `setup()`/`loop()`, sensor polling (VL53L0X), MQTT publish,
+- `src/main.cpp` — `setup()`/`loop()`, sensor polling (VL53L0X), boot-time I2C scan, MQTT publish,
   OneButton handling. `setup()` brings up M5Unified (where defined), starts
   Improv-WiFi over serial, tries cached creds from NVS, and starts the HTTP
   server on connect. `loop()` watches `WiFi.status()` and falls back to
@@ -73,6 +73,10 @@ Multi-file Arduino sketch. Current sources:
   added to default + release envs). Uses Arduino `Update.h`, expects
   `*_ota.bin` (app-only image, not the merged `*_firmware.bin`), CSRF-checks
   `Origin` vs `Host`, reboots on success.
+- `src/i2c.cpp/hpp` — `i2c_buses()` (Wire + Wire1 where compiled in), `i2c_bus_started()`,
+  `i2c_probe()`, `i2c_scan()` → `std::vector<uint8_t>` of ACKing addrs (0x08–0x77).
+  Web: `GET /api/i2c-scan` (synchronous) + "Scan I2C" button/table on `/`.
+- `src/vl53l0x.cpp/hpp` — VL53L0X `lox_init(TwoWire&)` / `lox_poll(TwoWire&)`.
 - `src/adsb_usb.cpp` — (`-DADSB_USB`, P4) USB-host minimal FTDI driver; an
   attached FTDI ADS-B dongle (also via hub) takes over from the UART source
   in `adsb.cpp` until unplugged.
@@ -93,14 +97,14 @@ Single firmware supports two runtime modes, switchable via web UI without reflas
   - AP always on (SSID + PSK both `hostName + ".local"`, WPA2)
   - STA optional (if WiFi creds exist)
   - Announces via mDNS (`_mqtt._tcp.local`, `_mqtt-ws._tcp.local`, `_http._tcp`)
-  - All topics prefixed with `hostName/` (e.g., `sensorpod/VL53L0X`)
+  - Topics optionally prefixed with `hostName/` (e.g., `sensorpod/VL53L0X`)
 
 - **Client Mode:**
   - Connects to remote broker discovered via mDNS
   - AP always on (SSID + PSK both `hostName + ".local"`, WPA2)
   - STA required (cannot function without WiFi)
   - Discovers available brokers every 10s, retries with exponential backoff (1s→2s→4s→8s→16s→60s cap)
-  - Publishes to remote broker, all topics prefixed with `hostName/`
+  - Publishes to remote broker, same optional `hostName/` prefix
 
 **Role Storage & Switching:**
 
@@ -124,7 +128,9 @@ Single firmware supports two runtime modes, switchable via web UI without reflas
 
 **Topic Prefixing:**
 All MQTT publishes go through `mqtt_publish(const char *topic, const char *payload)` wrapper
-(in `src/mqtt.cpp`), which auto-prepends `hostName/` to topic. Ensures consistency across modes.
+(inline in `src/mqtt.hpp`), which prepends `hostName/` when `topic_prefix_enabled` is set.
+Flag: NVS `device-config/topic_prefix`, **default off**, toggled live via
+`/api/set-topic-prefix` (web UI checkbox), exposed as `topic_prefix` in `/data`.
 
 **Connection & Failover:**
 
@@ -144,8 +150,7 @@ All MQTT publishes go through `mqtt_publish(const char *topic, const char *paylo
 - Device hostname: set by `WiFi.getHostname()` (usually MAC-derived like `esp32c6-5B0A24`)
 - mDNS instance: announced as `{hostname}-{service}` (e.g., `esp32c6-5B0A24-TCP-083AF24483D8`)
 - Service type: `_mqtt._tcp.local` for MQTT broker
-- All topics in Broker mode: `{hostname}/VL53L0X`, `{hostname}/status`
-- All topics in Client mode: same prefix, published to remote broker
+- Topics: `VL53L0X`, `status` (or `{hostname}/…` with prefixing on), same in both modes
 
 **Testing:**
 See `validation-checklist.md` for 8 test scenarios. Blockers: A (fresh Broker), B (role switch),

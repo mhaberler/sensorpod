@@ -154,6 +154,27 @@ public:
     return true;
   }
 
+  static bool isTopicPrefixEnabled() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return false;
+    bool enabled = prefs.getBool("topic_prefix", false); // default: off
+    prefs.end();
+    return enabled;
+  }
+
+  static bool setTopicPrefixEnabled(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for topic_prefix");
+      return false;
+    }
+    prefs.putBool("topic_prefix", enabled);
+    prefs.end();
+    log_i("Device config: topic_prefix = %s", enabled ? "on" : "off");
+    return true;
+  }
+
   static bool isWifiSleepEnabled() {
     Preferences prefs;
     if (!prefs.begin("device-config", true))
@@ -183,6 +204,7 @@ public:
 // Global role flag, set at boot from Preferences
 extern bool is_broker_mode;
 extern bool wifi_sleep_enabled;
+extern volatile bool topic_prefix_enabled; // prepend hostName/ to topics
 
 // BLE options, set at boot from Preferences, updated live by web endpoints
 extern volatile uint8_t ble_decoder_mode;  // DeviceConfig::BleDecoder
