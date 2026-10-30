@@ -3,6 +3,9 @@
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
 #include "i2c.hpp"
+#ifdef ADSB_UART
+#include "adsb.hpp"
+#endif
 #include <WebServer.h>
 #include <WiFi.h>
 #if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
@@ -112,6 +115,38 @@ void webserver_setup() {
     http_server.send(200, "application/json",
                      "{\"status\":\"saved\",\"applied\":true}");
   });
+
+#ifdef ADSB_UART
+  // ADS-B publish toggles. Saved to NVS, applied live.
+  http_server.on("/api/set-adsb", HTTP_POST, []() {
+    log_request();
+    if (!http_server.hasArg("publish") && !http_server.hasArg("ihex")) {
+      http_server.send(400, "application/json",
+                       "{\"error\":\"missing publish or ihex parameter\"}");
+      return;
+    }
+    if (http_server.hasArg("publish")) {
+      bool on = http_server.arg("publish").toInt() != 0;
+      if (!DeviceConfig::setAdsbPublishEnabled(on)) {
+        http_server.send(500, "application/json",
+                         "{\"error\":\"failed to save setting\"}");
+        return;
+      }
+      adsb_publish_enabled = on;
+    }
+    if (http_server.hasArg("ihex")) {
+      bool on = http_server.arg("ihex").toInt() != 0;
+      if (!DeviceConfig::setAdsbIhexEnabled(on)) {
+        http_server.send(500, "application/json",
+                         "{\"error\":\"failed to save setting\"}");
+        return;
+      }
+      adsb_ihex_enabled = on;
+    }
+    http_server.send(200, "application/json",
+                     "{\"status\":\"saved\",\"applied\":true}");
+  });
+#endif
 
   // I2C bus scan. Synchronous - blocks loop() for the duration of the scan.
   http_server.on("/api/i2c-scan", HTTP_GET, []() {

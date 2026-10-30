@@ -77,9 +77,15 @@ Multi-file Arduino sketch. Current sources:
   `i2c_probe()`, `i2c_scan()` → `std::vector<uint8_t>` of ACKing addrs (0x08–0x77).
   Web: `GET /api/i2c-scan` (synchronous) + "Scan I2C" button/table on `/`.
 - `src/vl53l0x.cpp/hpp` — VL53L0X `lox_init(TwoWire&)` / `lox_poll(TwoWire&)`.
+- `src/adsb.cpp` — (`-DADSB_UART`) ADS-B receiver: UART reader task →
+  ring buffer → Mode-S decode in `adsb_loop()`, publishes `ADSB/{icao}`
+  and optionally raw `*<hex>;` lines on `ihex`. Both toggled live by NVS
+  flags `adsb_pub` (default on) / `adsb_ihex` (default off) via
+  `/api/set-adsb` + web UI checkboxes. Details: `ADSB.md`.
 - `src/adsb_usb.cpp` — (`-DADSB_USB`, P4) USB-host minimal FTDI driver; an
   attached FTDI ADS-B dongle (also via hub) takes over from the UART source
-  in `adsb.cpp` until unplugged.
+  in `adsb.cpp` until unplugged. `adsb_usb_info()` exposes dongle
+  properties + traffic for the web UI ADS-B section.
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
   prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).

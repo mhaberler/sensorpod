@@ -4,6 +4,7 @@
 #ifdef ADSB_UART
 
 #include "cpr.h"
+#include "deviceconfig.hpp"
 #include "mqtt.hpp"
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
@@ -23,9 +24,9 @@ extern "C" {
 // framed hex lines are handed off through a ring buffer to adsb_loop(),
 // which decodes them (libmodes + readsb cpr.c), maintains a per-aircraft
 // table, and publishes readsb aircraft.json-style objects per aircraft to
-// MQTT topic {hostname}/ADSB/{icao}.
+// MQTT topic {hostname}/ADSB/{icao}. Optionally every raw frame line is
+// also published verbatim ("*<hex>;") to topic ihex.
 
-#define ADSB_BAUD 921600
 #define ADSB_RX_BUF_SIZE 16384
 #define ADSB_RINGBUF_SIZE 8192
 #define ADSB_MAX_LINE 32 // "*" + 28 hex chars (112 bit frame) + ";"
@@ -45,6 +46,11 @@ static uint32_t adsb_dropped_overflow = 0;
 static uint32_t adsb_frames_seen = 0;
 static uint32_t adsb_crc_fail = 0;
 static uint32_t adsb_decoded = 0;
+static volatile uint32_t adsb_uart_bytes = 0;
+static volatile uint32_t adsb_uart_last_rx_ms = 0;
+
+volatile bool adsb_publish_enabled = true;
+volatile bool adsb_ihex_enabled = false;
 
 static mode_s_t mode_s_ctx;
 
@@ -118,6 +124,7 @@ struct AdsbFramer {
   size_t len = 0;
   bool in_frame = false;
   uint32_t frames = 0; // frames since last reset
+  uint32_t total = 0;  // frames since boot
 };
 
 static void framer_reset(AdsbFramer &f) {
@@ -147,6 +154,7 @@ static void adsb_feed(AdsbFramer &f, const uint8_t *buf, size_t n) {
           log_w("ADS-B[%s] #%u: *%.*s;", f.name, (unsigned)f.frames + 1,
                 (int)f.len, f.line);
         f.frames++;
+        f.total++;
         if (xRingbufferSend(adsb_ringbuf, f.line, f.len, 0) != pdTRUE)
           adsb_dropped_overflow++;
       }
@@ -181,6 +189,10 @@ static void adsb_reader_task(void *arg) {
     }
     int n =
         adsb_serial.read(buf, avail < (int)sizeof(buf) ? avail : sizeof(buf));
+    if (n > 0) {
+      adsb_uart_bytes += n;
+      adsb_uart_last_rx_ms = millis();
+    }
     bool usb = adsb_usb_active;
     if (usb != was_usb) {
       // Source switch: restart framing and first-line logging.
@@ -216,6 +228,8 @@ void adsb_feed_usb(const uint8_t *buf, size_t n) {
 #endif
 
 void adsb_setup() {
+  adsb_publish_enabled = DeviceConfig::isAdsbPublishEnabled();
+  adsb_ihex_enabled = DeviceConfig::isAdsbIhexEnabled();
   adsb_ringbuf = xRingbufferCreate(ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT);
   adsb_serial.setRxBufferSize(ADSB_RX_BUF_SIZE);
   adsb_serial.begin(ADSB_BAUD, SERIAL_8N1, ADSB_RX_PIN, ADSB_TX_PIN);
@@ -263,6 +277,12 @@ static size_t hex_to_bin(const char *hex, size_t hexlen, unsigned char *out,
 }
 
 static void adsb_process_frame(const char *hex, size_t hexlen) {
+  if (adsb_ihex_enabled) {
+    char line[ADSB_MAX_LINE + 3];
+    snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
+    mqtt_publish("ihex", line);
+  }
+
   unsigned char msg[14] = {0};
   size_t nbytes = hex_to_bin(hex, hexlen, msg, sizeof(msg));
   if (nbytes < 7) // shorter than any DF17/18 frame can be
@@ -444,12 +464,14 @@ static void adsb_table_loop() {
       continue;
 
     if (now - ac.last_seen_ms > ADSB_AIRCRAFT_TTL_MS) {
-      adsb_publish_tombstone(ac);
+      if (adsb_publish_enabled)
+        adsb_publish_tombstone(ac);
       ac = Aircraft();
       continue;
     }
 
-    if (now - ac.last_published_ms >= ADSB_PUBLISH_INTERVAL_MS &&
+    if (adsb_publish_enabled &&
+        now - ac.last_published_ms >= ADSB_PUBLISH_INTERVAL_MS &&
         ac.messages != ac.messages_at_last_publish) {
       adsb_publish_aircraft(ac, now);
     }
@@ -484,6 +506,9 @@ AdsbStats adsb_get_stats() {
     if (ac.used)
       count++;
   s.aircraft_count = count;
+  s.uart_bytes = adsb_uart_bytes;
+  s.uart_frames = uart_framer.total;
+  s.uart_last_rx_ms = adsb_uart_last_rx_ms;
 #ifdef ADSB_USB
   s.usb_active = adsb_usb_active;
   s.usb_frames = adsb_usb_frames + (adsb_usb_active ? usb_framer.frames : 0);

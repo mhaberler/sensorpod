@@ -175,6 +175,48 @@ public:
     return true;
   }
 
+  static bool isAdsbPublishEnabled() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return true;
+    bool enabled = prefs.getBool("adsb_pub", true); // default: on
+    prefs.end();
+    return enabled;
+  }
+
+  static bool setAdsbPublishEnabled(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for adsb_pub");
+      return false;
+    }
+    prefs.putBool("adsb_pub", enabled);
+    prefs.end();
+    log_i("Device config: adsb_pub = %s", enabled ? "on" : "off");
+    return true;
+  }
+
+  static bool isAdsbIhexEnabled() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return false;
+    bool enabled = prefs.getBool("adsb_ihex", false); // default: off
+    prefs.end();
+    return enabled;
+  }
+
+  static bool setAdsbIhexEnabled(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for adsb_ihex");
+      return false;
+    }
+    prefs.putBool("adsb_ihex", enabled);
+    prefs.end();
+    log_i("Device config: adsb_ihex = %s", enabled ? "on" : "off");
+    return true;
+  }
+
   static bool isWifiSleepEnabled() {
     Preferences prefs;
     if (!prefs.begin("device-config", true))

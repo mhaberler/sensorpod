@@ -160,6 +160,21 @@ stream (lines end in `\r\n`, ignored by the framer). Enabled in
   buffer drops, live aircraft count) are folded into the existing 1 Hz
   `{hostname}/status` publish (`src/main.cpp`), not a separate topic.
 
+### Raw frames, toggles & web UI
+
+- **ihex**: optionally every framed line is published verbatim
+  (`*<hex>;`, before CRC check) to topic `ihex` (hostname prefix applies).
+- Web UI (`/`) ADS-B section, two persistent checkboxes (NVS
+  `device-config/adsb_pub` default on, `adsb_ihex` default off, applied
+  live via `POST /api/set-adsb` with `publish=0|1` and/or `ihex=0|1`).
+  With aircraft publishing off, decoding and the table keep running
+  (counters stay live) but no `ADSB/{icao}` objects or tombstones go out.
+- Same section shows (at page load): active source, UART pins/baud,
+  last-data age and byte/frame counts; USB dongle connected/not, VID:PID,
+  FTDI chip + bcd, speed, manufacturer/product/serial strings, addr/hub
+  port, EP/MPS, actual baud, connected duration, byte/frame counts;
+  decoder and drop counters.
+
 ## Status
 
 `m5stack-nanoc6` (default), `esp32p4_waveshare_devkit_adsb` and

@@ -55,6 +55,28 @@ static struct {
   uint32_t attached_ms;
 } dev;
 
+static AdsbUsbInfo usb_info;        // published once connected is set
+static volatile uint32_t usb_bytes; // all sessions
+
+// UTF-16LE string descriptor -> printable, HTML-safe ASCII.
+static void str_desc_ascii(const usb_str_desc_t *d, char *out, size_t cap) {
+  size_t n = 0;
+  if (d && d->bLength > 2) {
+    size_t chars = (d->bLength - 2) / 2;
+    for (size_t i = 0; i < chars && n + 1 < cap; i++) {
+      uint16_t c = d->wData[i];
+      out[n++] = (c >= 0x20 && c < 0x7f && !strchr("<>&'\"", c)) ? c : '?';
+    }
+  }
+  out[n] = 0;
+}
+
+AdsbUsbInfo adsb_usb_info() {
+  AdsbUsbInfo i = usb_info;
+  i.bytes = usb_bytes;
+  return i;
+}
+
 // ---------------------------------------------------------------------------
 // Chip identification + baud divisor (after libftdi ftdi_convert_baudrate)
 
@@ -175,8 +197,10 @@ static void bulk_cb(usb_transfer_t *x) {
     }
     for (int off = 0; off < n; off += dev.mps) {
       int chunk = n - off < dev.mps ? n - off : dev.mps;
-      if (chunk > 2)
+      if (chunk > 2) {
         adsb_feed_usb(x->data_buffer + off + 2, chunk - 2);
+        usb_bytes += chunk - 2;
+      }
     }
     if (!dev.gone && usb_host_transfer_submit(x) == ESP_OK)
       return;
@@ -191,6 +215,7 @@ static void bulk_cb(usb_transfer_t *x) {
 // Device attach / detach (client task context)
 
 static void ftdi_teardown(const char *why) {
+  usb_info.connected = false;
   if (dev.ep_in && dev.inflight > 0) {
     usb_host_endpoint_halt(dev.hdl, dev.ep_in);
     usb_host_endpoint_flush(dev.hdl, dev.ep_in);
@@ -337,6 +362,27 @@ static void device_new(uint8_t addr) {
     else
       log_e("ADS-B USB: bulk IN submit failed");
   }
+
+  AdsbUsbInfo i = {};
+  i.addr = addr;
+  i.hub_port = info.parent.port_num;
+  i.vid = dd->idVendor;
+  i.pid = dd->idProduct;
+  i.bcd = bcd;
+  i.chip = chip_name(bcd);
+  i.speed = info.speed == USB_SPEED_HIGH   ? "high"
+            : info.speed == USB_SPEED_FULL ? "full"
+                                           : "low";
+  i.ep_in = dev.ep_in;
+  i.mps = dev.mps;
+  i.baud = actual_baud;
+  i.attached_ms = dev.attached_ms;
+  str_desc_ascii(info.str_desc_manufacturer, i.manufacturer,
+                 sizeof(i.manufacturer));
+  str_desc_ascii(info.str_desc_product, i.product, sizeof(i.product));
+  str_desc_ascii(info.str_desc_serial_num, i.serial, sizeof(i.serial));
+  i.connected = true;
+  usb_info = i;
 
   log_w("ADS-B USB: dongle connected addr %u (parent hub port %u), "
         "%04x:%04x %s bcd=0x%04x, %s speed, EP 0x%02x MPS %u, baud %d "

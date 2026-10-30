@@ -203,6 +203,10 @@ If no VL53L0X is detected at boot, polling is skipped and only the `status` topi
 
 **I2C scan:** at boot every started I2C bus is scanned (0x08–0x77) and found addresses are logged. The web UI **Scan I2C** button (`GET /api/i2c-scan`) rescans on demand and shows a Bus | Address table; buses compiled in but not started (e.g. `Wire1`) show as "not started". The scan runs synchronously in `loop()`.
 
+## ADS-B receiver
+
+Envs `esp32p4_waveshare_devkit_adsb` and `seed-xiao-c6-adsb` add an ADS-B receiver (UART module, or on the P4 an FTDI USB dongle). Decoded aircraft are published to `ADSB/{icao}`; raw frames (`*<hex>;`) can additionally go to `ihex`. Both are toggled by persistent checkboxes on the web UI, which also shows UART/USB status, traffic counters and dongle properties. See [ADSB.md](ADSB.md).
+
 ## BLE sensor scanning
 
 SensorPod continuously scans for BLE advertisements on a dedicated FreeRTOS task and publishes decoded sensor readings to MQTT. All BLE options are set on the web UI (`/`), stored in NVS, and — except for the scan on/off switch — applied **live, without reboot**:
@@ -286,7 +290,9 @@ sensorpod/
 │   ├── BLE.cpp             # scanner glue: drain queue, publish ble/<mac>
 │   ├── bthome_rx.cpp/.hpp  # BTHome v2 receive: bthome-cpp decode, decrypt, JSON
 │   ├── custom_decoder.cpp  # hand-written decoders (Mikrotik TG-BT5, Qingping)
-│   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, topic prefix, BLE options
+│   ├── adsb.cpp/.hpp       # ADS-B receiver: UART ingest, Mode-S decode, ADSB/{icao} + ihex publish
+│   ├── adsb_usb.cpp/.hpp   # USB-host FTDI dongle ingest (P4)
+│   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, topic prefix, BLE, ADS-B options
 │   ├── mdns_state.hpp      # mDNS service struct + externs
 │   ├── led.hpp/cpp         # LED status feedback
 │   ├── hosted_ota.cpp/.hpp # force-flash esp-hosted C6 from URL (P4 debug downgrade)

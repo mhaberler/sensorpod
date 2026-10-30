@@ -16,6 +16,10 @@
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
 #include "reset_reason.hpp"
+#ifdef ADSB_UART
+#include "adsb.hpp"
+#include "adsb_usb.hpp"
+#endif
 
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
 #include <esp32-hal-hosted.h>
@@ -222,6 +226,70 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   out += "<h3>I2C</h3><button type='button' class='config-btn' "
          "onclick='scanI2c()'>Scan I2C</button><div id='i2cResult'></div>";
 
+#ifdef ADSB_UART
+  {
+    const AdsbStats s = adsb_get_stats();
+    const uint32_t now = millis();
+    out += "<h3>ADS-B</h3>";
+    appendf(out,
+            "<p><label><input type='checkbox'%s "
+            "onclick=\"saveAdsb('publish',this.checked)\"> Publish aircraft "
+            "(<code>ADSB/{icao}</code>)</label><br>",
+            DeviceConfig::isAdsbPublishEnabled() ? " checked" : "");
+    appendf(out,
+            "<label><input type='checkbox'%s "
+            "onclick=\"saveAdsb('ihex',this.checked)\"> Publish raw frames "
+            "(<code>ihex</code>)</label></p>",
+            DeviceConfig::isAdsbIhexEnabled() ? " checked" : "");
+
+    out += "<table>";
+#ifdef ADSB_USB
+    appendf(out, "<tr><td>Active source</td><td>%s</td></tr>",
+            s.usb_active ? "USB" : "UART");
+#endif
+    appendf(out, "<tr><td>UART</td><td>RX GPIO%d / TX GPIO%d, %d 8N1</td></tr>",
+            (int)ADSB_RX_PIN, (int)ADSB_TX_PIN, ADSB_BAUD);
+    if (s.uart_last_rx_ms)
+      appendf(out, "<tr><td>UART last data</td><td>%lus ago</td></tr>",
+              (unsigned long)((now - s.uart_last_rx_ms) / 1000));
+    else
+      out += "<tr><td>UART last data</td><td>never</td></tr>";
+    appendf(out, "<tr><td>UART traffic</td><td>%lu bytes, %lu frames</td></tr>",
+            (unsigned long)s.uart_bytes, (unsigned long)s.uart_frames);
+#ifdef ADSB_USB
+    const AdsbUsbInfo u = adsb_usb_info();
+    appendf(out, "<tr><td>USB dongle</td><td>%s</td></tr>",
+            u.connected ? "connected" : "not connected");
+    if (u.connected) {
+      appendf(out,
+              "<tr><td>USB device</td><td>%04x:%04x %s (bcd 0x%04x), %s "
+              "speed</td></tr>",
+              u.vid, u.pid, u.chip, u.bcd, u.speed);
+      appendf(out, "<tr><td>USB strings</td><td>%s / %s / %s</td></tr>",
+              u.manufacturer[0] ? u.manufacturer : "-",
+              u.product[0] ? u.product : "-", u.serial[0] ? u.serial : "-");
+      appendf(out,
+              "<tr><td>USB link</td><td>addr %u, hub port %u, EP 0x%02x MPS "
+              "%u, %d baud</td></tr>",
+              u.addr, u.hub_port, u.ep_in, u.mps, u.baud);
+      appendf(out, "<tr><td>USB connected for</td><td>%lus</td></tr>",
+              (unsigned long)((now - u.attached_ms) / 1000));
+    }
+    appendf(out, "<tr><td>USB traffic</td><td>%lu bytes, %lu frames</td></tr>",
+            (unsigned long)u.bytes, (unsigned long)s.usb_frames);
+#endif
+    appendf(out,
+            "<tr><td>Decoder</td><td>%lu frames, %lu CRC fail, %lu decoded, "
+            "%lu aircraft</td></tr>",
+            (unsigned long)s.frames_seen, (unsigned long)s.crc_fail,
+            (unsigned long)s.decoded, (unsigned long)s.aircraft_count);
+    appendf(out,
+            "<tr><td>Dropped</td><td>%lu bad lines, %lu overflow</td></tr>",
+            (unsigned long)s.dropped_lines, (unsigned long)s.dropped_overflow);
+    out += "</table>";
+  }
+#endif
+
   // Client mode: show broker selection section
   if (!is_broker_mode) {
     out += "<p><strong>Broker Configuration (Client Mode):</strong></p>";
@@ -323,6 +391,12 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "a.toString(16).padStart(2,'0')+'</td></tr>'});});"
       "el.innerHTML=h+'</table>';})"
       ".catch(e=>{el.textContent='Error: '+e})}"
+      "function saveAdsb(k,c){"
+      "fetch('/api/"
+      "set-adsb',{method:'POST',headers:{'Content-Type':"
+      "'application/x-www-form-urlencoded'},body:k+'='+(c?1:0)})"
+      ".then(r=>r.json()).then(d=>{if(d.error)alert('Error: '+d.error)})"
+      ".catch(e=>alert('Error: '+e))}"
       "function saveTopicPrefix(c){"
       "fetch('/api/"
       "set-topic-prefix',{method:'POST',headers:{'Content-Type':"
