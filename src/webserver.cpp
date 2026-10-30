@@ -112,6 +112,25 @@ void webserver_setup() {
                      "{\"status\":\"saved\",\"applied\":true}");
   });
 
+  // Prefix MQTT topics with hostName/. Saved to NVS, applied live.
+  http_server.on("/api/set-topic-prefix", HTTP_POST, []() {
+    log_request();
+    if (!http_server.hasArg("enabled")) {
+      http_server.send(400, "application/json",
+                       "{\"error\":\"missing enabled parameter\"}");
+      return;
+    }
+    bool on = http_server.arg("enabled").toInt() != 0;
+    if (!DeviceConfig::setTopicPrefixEnabled(on)) {
+      http_server.send(500, "application/json",
+                       "{\"error\":\"failed to save setting\"}");
+      return;
+    }
+    topic_prefix_enabled = on;
+    http_server.send(200, "application/json",
+                     "{\"status\":\"saved\",\"applied\":true}");
+  });
+
   // BLE scanning on/off. Boot-time gate - saved to NVS, needs reboot.
   http_server.on("/api/set-ble-scan", HTTP_POST, []() {
     log_request();

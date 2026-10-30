@@ -46,6 +46,7 @@ ImprovWiFi improvSerial(&Serial);
 extern String hostName;
 bool is_broker_mode = true;
 bool wifi_sleep_enabled = false;
+volatile bool topic_prefix_enabled = false; // live-updated by web UI
 // BLE options (deviceconfig.hpp), loaded at boot, live-updated by web UI
 volatile uint8_t ble_decoder_mode = DeviceConfig::BLE_DECODER_THEENGS;
 volatile bool ble_retain_undecoded = false;
@@ -146,6 +147,9 @@ void setup() {
   wifi_sleep_enabled = DeviceConfig::isWifiSleepEnabled();
   log_d("Device role: %s", is_broker_mode ? "Broker" : "Client");
   log_d("WiFi modem-sleep: %s", wifi_sleep_enabled ? "on" : "off");
+
+  topic_prefix_enabled = DeviceConfig::isTopicPrefixEnabled();
+  log_d("MQTT topic prefix: %s", topic_prefix_enabled ? "on" : "off");
 
   // BLE options
   ble_scan_enabled = DeviceConfig::isBleScanEnabled();

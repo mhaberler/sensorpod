@@ -54,8 +54,13 @@ extern MQTTDevice *mqtt_device;
 
 inline void mqtt_publish(const char *topic, const char *payload) {
   extern String hostName;
-  String prefixed = String(hostName) + "/" + topic;
-  if (mqtt_device) {
-    mqtt_device->publish(prefixed.c_str(), payload);
+  extern volatile bool topic_prefix_enabled;
+  if (!mqtt_device)
+    return;
+  if (!topic_prefix_enabled) {
+    mqtt_device->publish(topic, payload);
+    return;
   }
+  String prefixed = String(hostName) + "/" + topic;
+  mqtt_device->publish(prefixed.c_str(), payload);
 }
