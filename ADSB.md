@@ -1,7 +1,7 @@
 # ADS-B receiver integration
 
 Connects a Rextron 89001090 ADS-B receiver module to the
-`esp32p4_waveshare_devkit` env (Waveshare ESP32-P4-WiFi6). Frames are
+`esp32p4_waveshare_devkit_adsb` env (Waveshare ESP32-P4-WiFi6). Frames are
 decoded on-device (Mode-S DF17/DF18) and published per aircraft as
 readsb aircraft.json-style JSON objects to
 `{hostname}/ADSB/{icao}`.
@@ -21,15 +21,16 @@ Connector (2x5, 2mm): `3V3, RxD1, TxD1, 1PPS, GND` (host side, pins 1/3/5/9).
 |---|---|
 | 3V3 | 3V3 |
 | GND | GND |
-| TxD1 (module out) | GPIO52 (ESP32 RX) |
-| RxD1 (module in) | GPIO53 (ESP32 TX) |
+| TxD1 (module out) | GPIO51 (ESP32 RX) |
+| RxD1 (module in) | GPIO52 (ESP32 TX) |
 
-GPIO52/53 chosen as free pins on the 40-pin header, not strapping pins
-(P4 strapping = GPIO34-38), routed via GPIO matrix.
+GPIO51/52 (`ADSB_RX_PIN`/`ADSB_TX_PIN` in `platformio.ini`) chosen as free
+pins on the 40-pin header, not strapping pins (P4 strapping = GPIO34-38), routed via GPIO matrix.
 
 ## Firmware design
 
-Build-flag gated (`-DADSB_UART`, only set in `esp32p4_waveshare_devkit` env)
+Build-flag gated (`-DADSB_UART`, set in `esp32p4_waveshare_devkit_adsb` and
+`seed-xiao-c6-adsb` (RX GPIO19, TX GPIO5))
 — compiled out entirely elsewhere.
 
 ### UART ingest (`src/adsb.cpp`)
@@ -161,7 +162,8 @@ stream (lines end in `\r\n`, ignored by the framer). Enabled in
 
 ## Status
 
-Both `m5stack-nanoc6` (default) and `esp32p4_waveshare_devkit` build clean.
+`m5stack-nanoc6` (default), `esp32p4_waveshare_devkit_adsb` and
+`seed-xiao-c6-adsb` build clean.
 Decoder verified standalone against known-good DF17 test frames (CRC ok,
 ICAO/altitude/callsign/CPR position all correct). **Not yet tested against
 the physical module or over MQTT on device.**
@@ -182,7 +184,7 @@ UART fallback and re-plug not yet exercised on hardware.
 
 ## Remaining verification
 
-1. Wire module to GPIO52/53, confirm decoded aircraft objects arrive on
+1. Wire module to GPIO51/52, confirm decoded aircraft objects arrive on
    `{hostname}/ADSB/{icao}` (subscribe with `{hostname}/ADSB/#`).
 2. Confirm `seen`/`seen_pos` age correctly and tombstones (empty payload)
    are published ~60 s after an aircraft goes quiet.

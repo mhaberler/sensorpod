@@ -11,7 +11,6 @@
       "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/json_out.c -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/json_out.c)",
       "Bash(rm -rf /tmp/picomqtt_study)",
       "Bash(git clone *)"
-      "Bash(curl -fsSL https://raw.githubusercontent.com/wiedehopf/readsb/dev/json_out.c -o /private/tmp/claude-501/-Users-mah-Ballon-src-BalloonWare-kelvin-sensorpod/f3baa49c-398b-4081-87d4-e422c9301a66/scratchpad/json_out.c)"
     ]
   }
 }

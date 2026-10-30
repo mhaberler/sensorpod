@@ -8,9 +8,10 @@ src/idf_component.yml
 compile_commands.json
 .cache
 .pio-mcp-workspace/
-
 .mcp.json
 include/build_info.hpp
 .claude/settings.json
 AGENT_LEARNINGS.md
 UBIQUITOUS_LANGUAGE.md
+.claude/settings.json
+
