@@ -32,7 +32,7 @@ The broker is reachable at:
 
 The broker starts at boot and runs on both the AP and the STA interface simultaneously, so it is reachable regardless of WiFi state.
 
-**All sensor topics are prefixed with the device hostname** (e.g., `esp32c6-5b0a24/VL53L0X`, `esp32c6-5b0a24/status`).
+Topics are unprefixed by default (`VL53L0X`, `status`). Enable **Prefix MQTT topics** on the web UI to prepend the device hostname (e.g., `esp32c6-5b0a24/VL53L0X`) — see [Topic Prefixing](#sensors).
 
 ### Client Mode (Optional)
 
@@ -43,7 +43,7 @@ SensorPod can be switched to Client mode via the web UI (`/`), where it discover
 - Device reboots in Client mode, discovers brokers via mDNS every 10 seconds
 - Connects to first discovered broker with exponential backoff retry (1s → 2s → 4s → 8s → 16s → 60s cap)
 - Falls back to rediscovery after max retries exhausted
-- All sensor topics still prefixed with hostname, but published to remote broker
+- Same topic naming (prefix setting applies), published to remote broker
 
 **Role is persistent:** switch once, role is saved to NVS and survives power cycles.
 
@@ -194,12 +194,14 @@ Click counts (single/double/multi) are reserved for application-level button eve
 
 The default `loop()` polls a VL53L0X time-of-flight distance sensor on the I2C bus and publishes to the MQTT broker (local or remote):
 
-- `{hostname}/VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
-- `{hostname}/status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
+- `VL53L0X` topic: `{"distance_mm": <uint>}` at ~5 Hz
+- `status` topic: `{"uptime": <s>, "cpu_temperature": <°C>, "rssi": <dBm>}` at 1 Hz
 
-**Topic Prefixing:** All topics are automatically prefixed with the device's hostname for easy identification in multi-pod deployments. Example: `esp32c6-5b0a24/VL53L0X`, `esp32c6-5b0a24/status`.
+**Topic Prefixing:** off by default. Tick **Prefix MQTT topics with `{hostname}/`** on the web UI to prefix every topic with the device's hostname, for multi-pod deployments (e.g. `esp32c6-5b0a24/VL53L0X`). Stored in NVS, applied live, no reboot; reported as `topic_prefix` in `/data`.
 
 If no VL53L0X is detected at boot, polling is skipped and only the `status` topic publishes.
+
+**I2C scan:** at boot every started I2C bus is scanned (0x08–0x77) and found addresses are logged. The web UI **Scan I2C** button (`GET /api/i2c-scan`) rescans on demand and shows a Bus | Address table; buses compiled in but not started (e.g. `Wire1`) show as "not started". The scan runs synchronously in `loop()`.
 
 ## BLE sensor scanning
 
@@ -214,7 +216,7 @@ SensorPod continuously scans for BLE advertisements on a dedicated FreeRTOS task
 - **Retain undecoded advertisements**: when the selected decoder doesn't claim an advertisement, publish it raw instead of dropping it.
 - **Deduplicate advertisements** + **max age** (default 1 s): drops repeated identical advertisements (same MAC, byte-identical radio payload) within the age window. Runs in the scan callback before queueing, so it reduces load in every mode. A changed sensor value changes the payload and always passes.
 
-Decoded (or raw) readings are published as JSON to `{hostname}/ble/{mac}` (lowercase MAC, colons stripped), e.g.:
+Decoded (or raw) readings are published as JSON to `ble/{mac}` (`{hostname}/ble/{mac}` with topic prefixing on) (lowercase MAC, colons stripped), e.g.:
 
 ```text
 esp32c6-5b0a24/ble/d401c3e0bd1f {"dev":"Mikrotik TG-BT5-OUT","tempc":24.69,"batt":100,"id":"d4:01:c3:e0:bd:1f","rssi":-55,...}
@@ -271,6 +273,8 @@ Device hostname is auto-derived from the last 3 bytes of the MAC address via `Wi
 sensorpod/
 ├── src/
 │   ├── main.cpp            # setup/loop, sensor polling, MQTT publish, button, mDNS discovery loop
+│   ├── i2c.cpp/.hpp        # I2C bus list, probe, scan
+│   ├── vl53l0x.cpp/.hpp    # VL53L0X time-of-flight sensor init/poll
 │   ├── wifisetup.cpp       # AP + STA + mDNS announcements
 │   ├── webserver.cpp       # HTTP server lifecycle, route registration
 │   ├── content.cpp         # HTML/JSON sysinfo generation
@@ -282,7 +286,7 @@ sensorpod/
 │   ├── BLE.cpp             # scanner glue: drain queue, publish ble/<mac>
 │   ├── bthome_rx.cpp/.hpp  # BTHome v2 receive: bthome-cpp decode, decrypt, JSON
 │   ├── custom_decoder.cpp  # hand-written decoders (Mikrotik TG-BT5, Qingping)
-│   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, BLE options
+│   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, topic prefix, BLE options
 │   ├── mdns_state.hpp      # mDNS service struct + externs
 │   ├── led.hpp/cpp         # LED status feedback
 │   ├── hosted_ota.cpp/.hpp # force-flash esp-hosted C6 from URL (P4 debug downgrade)
