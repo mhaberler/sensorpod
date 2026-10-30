@@ -2,6 +2,7 @@
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
+#include "i2c.hpp"
 #include <WebServer.h>
 #include <WiFi.h>
 #if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
@@ -110,6 +111,34 @@ void webserver_setup() {
     WiFi.setSleep(wifi_sleep_enabled);
     http_server.send(200, "application/json",
                      "{\"status\":\"saved\",\"applied\":true}");
+  });
+
+  // I2C bus scan. Synchronous - blocks loop() for the duration of the scan.
+  http_server.on("/api/i2c-scan", HTTP_GET, []() {
+    log_request();
+    String body = "{\"buses\":[";
+    bool first_bus = true;
+    for (TwoWire *bus : i2c_buses()) {
+      bool started = i2c_bus_started(*bus);
+      if (!first_bus)
+        body += ",";
+      first_bus = false;
+      body += "{\"bus\":" + String(bus->getBusNum()) +
+              ",\"started\":" + (started ? "true" : "false") + ",\"devices\":[";
+      if (started) {
+        bool first_dev = true;
+        for (uint8_t addr : i2c_scan(*bus)) {
+          if (!first_dev)
+            body += ",";
+          first_dev = false;
+          body += String(addr);
+        }
+      }
+      body += "]}";
+    }
+    body += "]}";
+    http_server.sendHeader("Cache-Control", "no-store");
+    http_server.send(200, "application/json", body);
   });
 
   // Prefix MQTT topics with hostName/. Saved to NVS, applied live.

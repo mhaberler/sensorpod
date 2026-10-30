@@ -219,6 +219,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     out += "</form>";
   }
 
+  out += "<h3>I2C</h3><button type='button' class='config-btn' "
+         "onclick='scanI2c()'>Scan I2C</button><div id='i2cResult'></div>";
+
   // Client mode: show broker selection section
   if (!is_broker_mode) {
     out += "<p><strong>Broker Configuration (Client Mode):</strong></p>";
@@ -307,6 +310,19 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "'+d.error);return;}"
       "alert('Saved & applied');location.reload();})"
       ".catch(e=>alert('Error: '+e))}"
+      "function scanI2c(){"
+      "var "
+      "el=document.getElementById('i2cResult');el.textContent='Scanning...';"
+      "fetch('/api/i2c-scan').then(r=>r.json()).then(d=>{"
+      "var h='<table><tr><th>Bus</th><th>Address</th></tr>';"
+      "d.buses.forEach(b=>{var n='Wire'+b.bus;"
+      "if(!b.started)h+='<tr><td>'+n+'</td><td>not started</td></tr>';"
+      "else if(b.devices.length===0)h+='<tr><td>'+n+'</td><td>No devices "
+      "found</td></tr>';"
+      "else b.devices.forEach(a=>{h+='<tr><td>'+n+'</td><td>0x'+"
+      "a.toString(16).padStart(2,'0')+'</td></tr>'});});"
+      "el.innerHTML=h+'</table>';})"
+      ".catch(e=>{el.textContent='Error: '+e})}"
       "function saveTopicPrefix(c){"
       "fetch('/api/"
       "set-topic-prefix',{method:'POST',headers:{'Content-Type':"

@@ -2,14 +2,15 @@
 #define HAS_M5UNIFIED
 #include <M5Unified.h>
 #endif
-#include "Adafruit_VL53L0X.h"
 #include "button.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
+#include "i2c.hpp"
 #include "led.hpp"
 #include "listenv.hpp"
 #include "mqtt_device.hpp"
 #include "reset_reason.hpp"
+#include "vl53l0x.hpp"
 #include <ArduinoJson.h>
 #include <ImprovWiFiBLE.h>
 #include <ImprovWiFiLibrary.h>
@@ -35,8 +36,6 @@
 #define DURATION 200            // mS
 
 int numClicks;
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
-bool lox_present;
 
 #include "mdns_client.hpp"
 #include "mqtt.hpp"
@@ -69,10 +68,6 @@ void blescanner_setup();
 void blescanner_stop();
 bool blescanner_started();
 void blescanner_loop();
-bool i2c_probe(TwoWire &w, uint8_t addr);
-void i2c_scan(TwoWire &w);
-bool lox_init(TwoWire &wire);
-std::optional<uint16_t> lox_poll(TwoWire &wire);
 
 void onImprovWiFiErrorCb(ImprovTypes::Error err) {
   log_e("Improv error %d", err);
@@ -167,8 +162,10 @@ void setup() {
 #endif
   startImprovSerialProvisioning();
   button_setup();
-  // i2c_scan(Wire);
-  lox_present = lox_init(Wire);
+  for (TwoWire *bus : i2c_buses())
+    if (i2c_bus_started(*bus))
+      i2c_scan(*bus);
+  lox_init(Wire);
   wifi_setup();
   // On SDIO-hosted P4 boards, BLE shares the C6 transport with co-processor
   // OTA — defer start until after the hosted version check (wifi_loop) or
@@ -299,39 +296,4 @@ void loop() {
 #endif
 
   yield();
-}
-
-bool i2c_probe(TwoWire &w, uint8_t addr) {
-  w.beginTransmission(addr);
-  return (w.endTransmission() == 0);
-}
-
-void i2c_scan(TwoWire &w) {
-  uint8_t bus = (&w == &Wire) ? 0 : 1;
-  log_i("scanning Wire%u", bus);
-  for (auto i = 8; i < 128; i++) {
-    w.beginTransmission(i);
-    if (w.endTransmission() == 0) {
-      log_i("Wire%u dev at 0x%x", bus, i);
-    }
-  }
-}
-
-bool lox_init(TwoWire &wire) {
-  bool lox_present = lox.begin();
-  log_w("VL53L0X:%s detected", lox_present ? "" : " not");
-  return lox_present;
-}
-
-std::optional<uint16_t> lox_poll(TwoWire &wire) {
-  if (!lox_present)
-    return std::nullopt;
-
-  VL53L0X_RangingMeasurementData_t measure;
-  lox.rangingTest(&measure, false);
-  if (measure.RangeStatus != 4) {
-    // log_d("range = %u", measure.RangeMilliMeter);
-    return measure.RangeMilliMeter;
-  }
-  return std::nullopt;
 }
