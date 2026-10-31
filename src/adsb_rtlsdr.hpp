@@ -26,7 +26,10 @@ struct AdsbRtlsdrInfo {
   uint8_t addr;
   uint16_t vid, pid;
   char model[64]; // "<manufacturer> <product> (<tuner>)"
-  int gain;       // tenths of a dB
+  char serial[32];
+  int gain;      // tenths of a dB
+  int gains[32]; // tuner's manual gain steps, tenths of a dB
+  int ngains;
   bool bias_tee;
   uint32_t rate;
   uint32_t attached_ms;
@@ -37,11 +40,22 @@ struct AdsbRtlsdrInfo {
   float noise_dbfs;        // mean power of all samples, last buffer; NAN = none
   uint32_t strong_signals; // frames > -3 dBFS (gain too high), all sessions
   uint32_t clipped;        // I/Q bytes at 0 or 255 (ADC clipping), all sessions
+  float cal_k;             // dBm = dBFS - gain + cal_k; NAN = uncalibrated
+  float noise_dbm;         // NAN unless calibrated and noise known
 };
 AdsbRtlsdrInfo adsb_rtlsdr_info();
+
+// Live settings, called from the web server (persisting is the caller's).
+// Gain in tenths of a dB, -1 = tuner max; snapped to the nearest step and
+// applied by the RTL-SDR task between buffers.
+void adsb_rtlsdr_set_gain(int tenths);
+void adsb_rtlsdr_set_cal_k(float k);
+// dBFS -> dBm at the current gain; NAN if uncalibrated.
+float adsb_rtlsdr_dbm(float dbfs);
 
 // Implemented in adsb.cpp, called from the RTL-SDR task.
 void adsb_source_rtlsdr_attached();
 uint32_t adsb_source_rtlsdr_detached(); // returns frames framed this session
 // One CRC-valid frame as hex (no '*'/';'), signal level 0..1 of full scale.
 void adsb_feed_rtlsdr(const char *hex, size_t len, float signal);
+void adsb_signal_reset(); // gain changed: restart per-aircraft rssi windows

@@ -266,6 +266,10 @@ void loop() {
       const AdsbRtlsdrInfo r = adsb_rtlsdr_info();
       if (!isnan(r.noise_dbfs))
         doc["adsb_noise_dbfs"] = roundf(r.noise_dbfs * 10) / 10;
+      if (!isnan(r.noise_dbm))
+        doc["adsb_noise_dbm"] = roundf(r.noise_dbm * 10) / 10;
+      if (r.connected)
+        doc["adsb_rtl_gain"] = r.gain / 10.0;
       doc["adsb_strong_signals"] = r.strong_signals;
       doc["adsb_clipped"] = r.clipped;
     }

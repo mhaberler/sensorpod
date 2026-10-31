@@ -103,9 +103,12 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   and runs the session: 8 × 16 KiB bulk reads (PSRAM) → magnitude →
   libmodes `mode_s_detect()` (single-bit fix on, aggressive off) → repeat.
   Samples arriving during demod are dropped (same as ADS-B Scope).
-- 1090 MHz, 2 MS/s, manual gain `ADSB_RTLSDR_GAIN` (tenths dB, default
-  `-1` = tuner max), bias-tee `ADSB_RTLSDR_BIAS_TEE` (default off; Blog V4
-  EEPROM may force on). No adaptive gain.
+- 1090 MHz, 2 MS/s, manual gain (no tuner AGC, no adaptive gain): web UI
+  dropdown of the attached tuner's steps, NVS `rtl_gain` (tenths dB),
+  applied live between buffers; unset → `ADSB_RTLSDR_GAIN` (default `-1` =
+  tuner max). Saved value is snapped to the nearest step on attach. A gain
+  change clears every aircraft's rssi window. Bias-tee
+  `ADSB_RTLSDR_BIAS_TEE` (default off; Blog V4 EEPROM may force on).
 - CRC-valid DF17/18 frames are re-encoded `*<hex>;` and fed through their
   own `AdsbFramer` into the shared ring buffer → same aircraft table,
   `ADSB/{icao}` publish and `ihex` as the module.
@@ -118,11 +121,28 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   `-1` = unknown for UART/FTDI). Per aircraft the last 8 are averaged and
   published as `rssi` = `10·log10(mean + 1.125e-5)` in `ADSB/{icao}`
   (RTL-SDR source only; absent otherwise). Uncalibrated: shifts with gain.
+- **ihex with signal** (web UI checkbox, NVS `adsb_ihex_sig`, default off):
+  RTL-SDR frames go out as `+SS<hex>;` — GNS5892R mode 3+ layout, but
+  `SS` is the readsb Beast signal byte `round(sqrt(signal_level)·255)`,
+  i.e. `dBFS = 20·log10(SS/255)` (raw, never calibrated). UART/FTDI frames
+  stay `*<hex>;`. Plain `*`-only consumers (dump1090 raw, VRS) drop `+`
+  lines — hence off by default.
+- **Calibration to dBm** (web UI field K, NVS `rtl_cal_k`, empty = off):
+  `dBm = dBFS − gain_dB + K`, one global K for the dongle; gain is
+  subtracted so K survives gain changes (R820T steps are nominal, ± a
+  couple dB). With K set, `ADSB/{icao}` adds `rssi_dbm` (keeps `rssi`
+  dBFS) and status adds `adsb_noise_dbm`. Procedure: feed a known level
+  (signal generator at 1090 MHz, or compare an aircraft's level against a
+  reference receiver), read dBFS + gain from the UI, `K = dBm − dBFS + gain`.
+- `/api/set-adsb` (POST, form): besides `publish`/`ihex` also
+  `ihex_signal` (0/1), `rtl_gain` (tenths dB, must be a tuner step while a
+  dongle is attached; `-1` = max), `rtl_cal_k` (dB, empty = clear).
 - `{hostname}/status`: `adsb_source` gains `rtlsdr`, plus
   `adsb_rtlsdr_frames`, `adsb_noise_dbfs` (mean power of the last 64 Ki
   samples — messages are sparse, so ≈ noise floor), `adsb_strong_signals`
-  (frames > −3 dBFS) and `adsb_clipped` (I/Q bytes at 0/255). Rising
-  strong/clipped counts = gain too high. Web UI shows model/tuner, rate,
+  (frames > −3 dBFS) and `adsb_clipped` (I/Q bytes at 0/255), plus
+  `adsb_rtl_gain` (dB, while attached) and `adsb_noise_dbm` (if K set).
+  Rising strong/clipped counts = gain too high. Web UI shows model/tuner, rate,
   gain, bias-tee, I/Q bytes, read errors, frames, noise floor, overload.
 
 ### Mode-S decode
@@ -234,7 +254,12 @@ UART fallback and re-plug not yet exercised on hardware.
 RTL-SDR signal level verified on host (synthetic DF17 at 0.5 FS →
 −6.02 dBFS). RTL-SDR ingest: flashed on Waveshare P4, boots clean (both USB host
 clients registered, PSRAM buffers allocated, no crash over 3 min).
-**Dongle attach/demod not yet tested on hardware.**
+Verified on hardware with an RTL2838UHIDIR (R820T, `0bda:2838`): attach,
+~9 frames/s, 0 CRC fails, 14 aircraft within 30 s; ihex `+SS` bytes match
+per-aircraft `rssi`; gain change 49.6→37.2 dB applied live (noise −34.4 →
+−44.1 dBFS, clipping stopped); `rssi_dbm`/`adsb_noise_dbm` arithmetic and
+`/api/set-adsb` validation checked. At max gain the dongle clipped
+(~21 k I/Q bytes in 25 s) — lower gain is likely better for this site.
 
 ## Deferred / not implemented
 

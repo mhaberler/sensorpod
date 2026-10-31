@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <math.h>
 
 class DeviceConfig {
 public:
@@ -214,6 +215,75 @@ public:
     prefs.putBool("adsb_ihex", enabled);
     prefs.end();
     log_i("Device config: adsb_ihex = %s", enabled ? "on" : "off");
+    return true;
+  }
+
+  // ihex lines carry the RTL-SDR signal byte ("+SS<hex>;").
+  static bool isAdsbIhexSignalEnabled() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return false;
+    bool enabled = prefs.getBool("adsb_ihex_sig", false); // default: off
+    prefs.end();
+    return enabled;
+  }
+
+  static bool setAdsbIhexSignalEnabled(bool enabled) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for adsb_ihex_sig");
+      return false;
+    }
+    prefs.putBool("adsb_ihex_sig", enabled);
+    prefs.end();
+    log_i("Device config: adsb_ihex_sig = %s", enabled ? "on" : "off");
+    return true;
+  }
+
+  // RTL-SDR tuner gain, tenths of a dB; -1 = unset (build default).
+  static int getRtlGain() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return -1;
+    int gain = prefs.getInt("rtl_gain", -1);
+    prefs.end();
+    return gain;
+  }
+
+  static bool setRtlGain(int tenths) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for rtl_gain");
+      return false;
+    }
+    prefs.putInt("rtl_gain", tenths);
+    prefs.end();
+    log_i("Device config: rtl_gain = %d", tenths);
+    return true;
+  }
+
+  // RTL-SDR calibration constant K (dB): dBm = dBFS - gain + K. NAN = unset.
+  static float getRtlCalK() {
+    Preferences prefs;
+    if (!prefs.begin("device-config", true))
+      return NAN;
+    float k = prefs.isKey("rtl_cal_k") ? prefs.getFloat("rtl_cal_k", NAN) : NAN;
+    prefs.end();
+    return k;
+  }
+
+  static bool setRtlCalK(float k) {
+    Preferences prefs;
+    if (!prefs.begin("device-config", false)) {
+      log_e("Device config: failed to open NVS for rtl_cal_k");
+      return false;
+    }
+    if (isnan(k))
+      prefs.remove("rtl_cal_k");
+    else
+      prefs.putFloat("rtl_cal_k", k);
+    prefs.end();
+    log_i("Device config: rtl_cal_k = %.1f", k);
     return true;
   }
 

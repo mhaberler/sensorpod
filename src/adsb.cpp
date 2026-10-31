@@ -55,6 +55,8 @@ static volatile uint32_t adsb_uart_last_rx_ms = 0;
 
 volatile bool adsb_publish_enabled = true;
 volatile bool adsb_ihex_enabled = false;
+volatile bool adsb_ihex_signal = false;
+static volatile bool adsb_signal_reset_pending = false;
 
 static mode_s_t mode_s_ctx;
 
@@ -282,6 +284,9 @@ void adsb_feed_rtlsdr(const char *hex, size_t len, float signal) {
 void adsb_setup() {
   adsb_publish_enabled = DeviceConfig::isAdsbPublishEnabled();
   adsb_ihex_enabled = DeviceConfig::isAdsbIhexEnabled();
+#ifdef ADSB_RTLSDR
+  adsb_ihex_signal = DeviceConfig::isAdsbIhexSignalEnabled();
+#endif
   adsb_ringbuf = xRingbufferCreate(ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT);
   adsb_serial.setRxBufferSize(ADSB_RX_BUF_SIZE);
   adsb_serial.begin(ADSB_BAUD, SERIAL_8N1, ADSB_RX_PIN, ADSB_TX_PIN);
@@ -333,8 +338,16 @@ static size_t hex_to_bin(const char *hex, size_t hexlen, unsigned char *out,
 
 static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
   if (adsb_ihex_enabled) {
-    char line[ADSB_MAX_LINE + 3];
-    snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
+    char line[ADSB_MAX_LINE + 5];
+    if (adsb_ihex_signal && signal >= 0) {
+      // GNS5892R mode 3+ layout, SS = Beast signal byte (readsb):
+      // round(sqrt(signal) * 255), i.e. dBFS = 20 * log10(SS / 255).
+      long ss = lroundf(sqrtf(signal) * 255);
+      snprintf(line, sizeof(line), "+%02X%.*s;",
+               (unsigned)(ss > 255 ? 255 : ss), (int)hexlen, hex);
+    } else {
+      snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
+    }
     mqtt_publish("ihex", line);
   }
 
@@ -504,8 +517,13 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
     float sum = 0;
     for (int i = 0; i < ac.signal_count; i++)
       sum += ac.signal[i];
-    doc["rssi"] =
-        roundf(10 * log10f(sum / ac.signal_count + 1.125e-5f) * 10) / 10;
+    float rssi = 10 * log10f(sum / ac.signal_count + 1.125e-5f);
+    doc["rssi"] = roundf(rssi * 10) / 10;
+#ifdef ADSB_RTLSDR
+    float dbm = adsb_rtlsdr_dbm(rssi);
+    if (!isnan(dbm))
+      doc["rssi_dbm"] = roundf(dbm * 10) / 10;
+#endif
   }
 
   String payload;
@@ -548,7 +566,14 @@ static void adsb_table_loop() {
   }
 }
 
+void adsb_signal_reset() { adsb_signal_reset_pending = true; }
+
 void adsb_loop() {
+  if (adsb_signal_reset_pending) {
+    adsb_signal_reset_pending = false;
+    for (auto &ac : aircraft_table)
+      ac.signal_count = ac.signal_idx = 0;
+  }
   size_t item_size = 0;
   void *item = xRingbufferReceive(adsb_ringbuf, &item_size, 0);
   if (item) {

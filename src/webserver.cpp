@@ -5,6 +5,7 @@
 #include "i2c.hpp"
 #ifdef ADSB_UART
 #include "adsb.hpp"
+#include "adsb_rtlsdr.hpp"
 #endif
 #include <WebServer.h>
 #include <WiFi.h>
@@ -120,9 +121,11 @@ void webserver_setup() {
   // ADS-B publish toggles. Saved to NVS, applied live.
   http_server.on("/api/set-adsb", HTTP_POST, []() {
     log_request();
-    if (!http_server.hasArg("publish") && !http_server.hasArg("ihex")) {
+    if (!http_server.hasArg("publish") && !http_server.hasArg("ihex") &&
+        !http_server.hasArg("ihex_signal") && !http_server.hasArg("rtl_gain") &&
+        !http_server.hasArg("rtl_cal_k")) {
       http_server.send(400, "application/json",
-                       "{\"error\":\"missing publish or ihex parameter\"}");
+                       "{\"error\":\"missing parameter\"}");
       return;
     }
     if (http_server.hasArg("publish")) {
@@ -143,6 +146,64 @@ void webserver_setup() {
       }
       adsb_ihex_enabled = on;
     }
+#ifdef ADSB_RTLSDR
+    if (http_server.hasArg("ihex_signal")) {
+      bool on = http_server.arg("ihex_signal").toInt() != 0;
+      if (!DeviceConfig::setAdsbIhexSignalEnabled(on)) {
+        http_server.send(500, "application/json",
+                         "{\"error\":\"failed to save setting\"}");
+        return;
+      }
+      adsb_ihex_signal = on;
+    }
+    if (http_server.hasArg("rtl_gain")) {
+      // Tenths of a dB, -1 = tuner max. Must be one of the attached
+      // tuner's steps; without a dongle any 0..60 dB value is stored and
+      // snapped on attach.
+      String a = http_server.arg("rtl_gain");
+      char *end;
+      long g = strtol(a.c_str(), &end, 10);
+      const AdsbRtlsdrInfo ri = adsb_rtlsdr_info();
+      bool valid = a.length() && *end == 0 && g >= -1 && g <= 600;
+      if (valid && g >= 0 && ri.connected) {
+        valid = false;
+        for (int k = 0; k < ri.ngains; k++)
+          valid |= ri.gains[k] == g;
+      }
+      if (!valid) {
+        http_server.send(400, "application/json",
+                         "{\"error\":\"invalid rtl_gain\"}");
+        return;
+      }
+      if (!DeviceConfig::setRtlGain(g)) {
+        http_server.send(500, "application/json",
+                         "{\"error\":\"failed to save setting\"}");
+        return;
+      }
+      adsb_rtlsdr_set_gain(g);
+    }
+    if (http_server.hasArg("rtl_cal_k")) {
+      // dB; empty = uncalibrated.
+      String a = http_server.arg("rtl_cal_k");
+      a.trim();
+      float k = NAN;
+      if (a.length()) {
+        char *end;
+        k = strtof(a.c_str(), &end);
+        if (*end != 0 || isnan(k) || k < -200 || k > 200) {
+          http_server.send(400, "application/json",
+                           "{\"error\":\"invalid rtl_cal_k\"}");
+          return;
+        }
+      }
+      if (!DeviceConfig::setRtlCalK(k)) {
+        http_server.send(500, "application/json",
+                         "{\"error\":\"failed to save setting\"}");
+        return;
+      }
+      adsb_rtlsdr_set_cal_k(k);
+    }
+#endif
     http_server.send(200, "application/json",
                      "{\"status\":\"saved\",\"applied\":true}");
   });

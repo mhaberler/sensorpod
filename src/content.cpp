@@ -240,8 +240,16 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out,
             "<label><input type='checkbox'%s "
             "onclick=\"saveAdsb('ihex',this.checked)\"> Publish raw frames "
-            "(<code>ihex</code>)</label></p>",
+            "(<code>ihex</code>)</label>",
             DeviceConfig::isAdsbIhexEnabled() ? " checked" : "");
+#ifdef ADSB_RTLSDR
+    appendf(out,
+            "<br><label><input type='checkbox'%s "
+            "onclick=\"saveAdsb('ihex_signal',this.checked)\"> RTL-SDR "
+            "frames with signal (<code>+SS&lt;hex&gt;;</code>)</label>",
+            DeviceConfig::isAdsbIhexSignalEnabled() ? " checked" : "");
+#endif
+    out += "</p>";
 
     out += "<table>";
 #ifdef ADSB_USB
@@ -286,23 +294,51 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<tr><td>RTL-SDR</td><td>%s</td></tr>",
             r.connected ? "connected" : "not connected");
     if (r.connected) {
-      appendf(out, "<tr><td>RTL-SDR device</td><td>%04x:%04x %s</td></tr>",
-              r.vid, r.pid, r.model);
+      appendf(
+          out,
+          "<tr><td>RTL-SDR device</td><td>%04x:%04x %s, serial %s</td></tr>",
+          r.vid, r.pid, r.model, r.serial[0] ? r.serial : "-");
       appendf(out,
-              "<tr><td>RTL-SDR tuning</td><td>%lu S/s, gain %.1f dB, "
-              "bias-tee %s</td></tr>",
-              (unsigned long)r.rate, r.gain / 10.0, r.bias_tee ? "on" : "off");
+              "<tr><td>RTL-SDR tuning</td><td>%lu S/s, bias-tee %s</td></tr>",
+              (unsigned long)r.rate, r.bias_tee ? "on" : "off");
+      out += "<tr><td>RTL-SDR gain</td><td><select "
+             "onchange=\"saveAdsb('rtl_gain',this.value)\">";
+      for (int k = 0; k < r.ngains; k++)
+        appendf(out, "<option value='%d'%s>%.1f dB</option>", r.gains[k],
+                r.gains[k] == r.gain ? " selected" : "", r.gains[k] / 10.0);
+      out += "</select></td></tr>";
       appendf(out, "<tr><td>RTL-SDR connected for</td><td>%lus</td></tr>",
               (unsigned long)((now - r.attached_ms) / 1000));
+    } else {
+      int g = DeviceConfig::getRtlGain();
+      if (g >= 0)
+        appendf(out, "<tr><td>RTL-SDR gain</td><td>%.1f dB (saved)</td></tr>",
+                g / 10.0);
+      else
+        out += "<tr><td>RTL-SDR gain</td><td>default</td></tr>";
     }
+    char kbuf[16] = "";
+    if (!isnan(r.cal_k))
+      snprintf(kbuf, sizeof(kbuf), "%.1f", r.cal_k);
+    appendf(out,
+            "<tr><td>RTL-SDR calibration</td><td>dBm = dBFS &minus; gain + K, "
+            "K <input id='rtlCalK' type='number' step='0.1' size='6' "
+            "value='%s' placeholder='unset'> dB <button type='button' "
+            "onclick=\"saveAdsb('rtl_cal_k',document.getElementById("
+            "'rtlCalK').value)\">Save</button></td></tr>",
+            kbuf);
     appendf(out,
             "<tr><td>RTL-SDR traffic</td><td>%lu I/Q bytes, %lu read errors, "
             "%lu frames</td></tr>",
             (unsigned long)r.bytes, (unsigned long)r.read_errors,
             (unsigned long)s.rtlsdr_frames);
-    if (!isnan(r.noise_dbfs))
-      appendf(out, "<tr><td>RTL-SDR noise floor</td><td>%.1f dBFS</td></tr>",
+    if (!isnan(r.noise_dbfs)) {
+      appendf(out, "<tr><td>RTL-SDR noise floor</td><td>%.1f dBFS",
               r.noise_dbfs);
+      if (!isnan(r.noise_dbm))
+        appendf(out, " = %.1f dBm", r.noise_dbm);
+      out += "</td></tr>";
+    }
     appendf(out,
             "<tr><td>RTL-SDR overload</td><td>%lu frames &gt; -3 dBFS, %lu "
             "clipped I/Q samples</td></tr>",
@@ -424,8 +460,10 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "function saveAdsb(k,c){"
       "fetch('/api/"
       "set-adsb',{method:'POST',headers:{'Content-Type':"
-      "'application/x-www-form-urlencoded'},body:k+'='+(c?1:0)})"
-      ".then(r=>r.json()).then(d=>{if(d.error)alert('Error: '+d.error)})"
+      "'application/x-www-form-urlencoded'},body:k+'='+encodeURIComponent("
+      "typeof c==='boolean'?(c?1:0):c)})"
+      ".then(r=>r.json()).then(d=>{if(d.error)alert('Error: '+d.error);"
+      "else if(typeof c!=='boolean')location.reload()})"
       ".catch(e=>alert('Error: '+e))}"
       "function saveTopicPrefix(c){"
       "fetch('/api/"

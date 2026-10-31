@@ -6,11 +6,13 @@
 #error "ADSB_RTLSDR needs ADSB_UART and ADSB_USB (shared USB host install)"
 #endif
 
+#include "deviceconfig.hpp"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 #include <usb/usb_host.h>
@@ -51,6 +53,8 @@ static AdsbRtlsdrInfo info; // published once connected is set
 static volatile uint32_t total_bytes, total_errors, total_frames;
 static volatile uint32_t total_strong, total_clipped;
 static volatile float noise_dbfs = NAN;
+static volatile float cal_k = NAN;
+static volatile int pending_gain = INT_MIN; // set by web server
 
 AdsbRtlsdrInfo adsb_rtlsdr_info() {
   AdsbRtlsdrInfo i = info;
@@ -60,7 +64,37 @@ AdsbRtlsdrInfo adsb_rtlsdr_info() {
   i.noise_dbfs = noise_dbfs;
   i.strong_signals = total_strong;
   i.clipped = total_clipped;
+  i.cal_k = cal_k;
+  i.noise_dbm = adsb_rtlsdr_dbm(i.noise_dbfs);
   return i;
+}
+
+void adsb_rtlsdr_set_gain(int tenths) { pending_gain = tenths; }
+
+void adsb_rtlsdr_set_cal_k(float k) { cal_k = k; }
+
+float adsb_rtlsdr_dbm(float dbfs) {
+  return dbfs - info.gain / 10.0f + cal_k; // NAN propagates
+}
+
+// Nearest supported step; -1 = highest.
+static int snap_gain(int want, const int *gains, int n) {
+  if (n <= 0)
+    return want;
+  if (want < 0)
+    return gains[n - 1];
+  int best = gains[0];
+  for (int k = 1; k < n; k++)
+    if (abs(gains[k] - want) < abs(best - want))
+      best = gains[k];
+  return best;
+}
+
+// USB strings end up in the web UI.
+static void sanitize(char *s) {
+  for (char *c = s; *c; c++)
+    if (*c < 0x20 || *c >= 0x7f || strchr("<>&'\"", *c))
+      *c = '?';
 }
 
 static void on_msg(mode_s_t *, struct mode_s_msg *mm) {
@@ -91,22 +125,25 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
   AdsbRtlsdrInfo i = {};
   int tuner = 0, force_bt = 0;
   rtlsdr_get_dongle_info(dev, i.model, sizeof(i.model), &tuner, &force_bt);
-  for (char *c = i.model; *c; c++) // USB strings end up in the web UI
-    if (*c < 0x20 || *c >= 0x7f || strchr("<>&'\"", *c))
-      *c = '?';
+  sanitize(i.model);
+  char serial[256] = ""; // driver writes up to 256 bytes
+  rtlsdr_get_usb_strings(dev, nullptr, nullptr, serial);
+  strlcpy(i.serial, serial, sizeof(i.serial));
+  sanitize(i.serial);
 
   if (rtlsdr_set_center_freq(dev, RTLSDR_FREQ) < 0)
     log_w("ADS-B RTL-SDR: set center freq failed");
   if (rtlsdr_set_sample_rate(dev, RTLSDR_RATE) < 0)
     log_w("ADS-B RTL-SDR: set sample rate failed");
   rtlsdr_set_tuner_gain_mode(dev, 1); // manual
-  int gain = ADSB_RTLSDR_GAIN;
-  if (gain < 0) {
-    int gains[32];
-    int ng = rtlsdr_get_tuner_gains(dev, nullptr);
-    if (ng > 0 && ng <= 32 && rtlsdr_get_tuner_gains(dev, gains) == ng)
-      gain = gains[ng - 1];
-  }
+  int ng = rtlsdr_get_tuner_gains(dev, nullptr);
+  if (ng > 0 && ng <= 32 && rtlsdr_get_tuner_gains(dev, i.gains) == ng)
+    i.ngains = ng;
+  int gain = DeviceConfig::getRtlGain();
+  if (gain < 0)
+    gain = ADSB_RTLSDR_GAIN;
+  gain = snap_gain(gain, i.gains, i.ngains);
+  pending_gain = INT_MIN;
   if (gain >= 0)
     rtlsdr_set_tuner_gain(dev, gain);
   bool bias_tee = ADSB_RTLSDR_BIAS_TEE || force_bt;
@@ -131,6 +168,16 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
   const char *why = "unplugged";
   int errors = 0;
   while (!gone) {
+    int want = pending_gain;
+    if (want != INT_MIN) {
+      pending_gain = INT_MIN;
+      int g = snap_gain(want, info.gains, info.ngains);
+      if (g >= 0 && rtlsdr_set_tuner_gain(dev, g) == 0) {
+        info.gain = rtlsdr_get_tuner_gain(dev);
+        adsb_signal_reset();
+        log_w("ADS-B RTL-SDR: gain %.1f dB", info.gain / 10.0);
+      }
+    }
     bool ok = true;
     for (int off = 0; off < RTLSDR_BUF_LEN && !gone; off += RTLSDR_XFER) {
       int n = 0;
@@ -230,6 +277,7 @@ void adsb_rtlsdr_setup() {
     return;
   }
   mode_s_init(&mode_s_ctx); // magnitude LUT; fix_errors on (dump1090 default)
+  cal_k = DeviceConfig::getRtlCalK();
 
   new_dev_queue = xQueueCreate(8, sizeof(uint8_t));
   usb_host_client_config_t cfg = {};

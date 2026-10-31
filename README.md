@@ -205,7 +205,7 @@ If no VL53L0X is detected at boot, polling is skipped and only the `status` topi
 
 ## ADS-B receiver
 
-Envs `esp32p4_waveshare_devkit_adsb` and `seed-xiao-c6-adsb` add an ADS-B receiver (UART module, or on the P4 an FTDI USB dongle or a plain RTL-SDR demodulated on-chip, which adds readsb-style `rssi` per aircraft and noise/overload counters in status). Decoded aircraft are published to `ADSB/{icao}`; raw frames (`*<hex>;`) can additionally go to `ihex`. Both are toggled by persistent checkboxes on the web UI, which also shows UART/USB/RTL-SDR status, traffic counters and dongle properties. See [ADSB.md](ADSB.md).
+Envs `esp32p4_waveshare_devkit_adsb` and `seed-xiao-c6-adsb` add an ADS-B receiver (UART module, or on the P4 an FTDI USB dongle or a plain RTL-SDR demodulated on-chip, which adds readsb-style `rssi` per aircraft, optional `+SS<hex>;` signal bytes on `ihex`, live gain and dBm calibration in the web UI, and noise/overload counters in status). Decoded aircraft are published to `ADSB/{icao}`; raw frames (`*<hex>;`) can additionally go to `ihex`. Both are toggled by persistent checkboxes on the web UI, which also shows UART/USB/RTL-SDR status, traffic counters and dongle properties. See [ADSB.md](ADSB.md).
 
 ## BLE sensor scanning
 

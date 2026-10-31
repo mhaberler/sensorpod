@@ -7,6 +7,7 @@
 // Publish toggles, loaded from NVS in adsb_setup(), updated live by web UI
 extern volatile bool adsb_publish_enabled; // ADSB/{icao} aircraft objects
 extern volatile bool adsb_ihex_enabled;    // raw "*<hex>;" lines on ihex
+extern volatile bool adsb_ihex_signal; // RTL-SDR frames as "+SS<hex>;" on ihex
 
 void adsb_setup();
 void adsb_loop();

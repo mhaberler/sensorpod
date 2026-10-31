@@ -90,7 +90,10 @@ Multi-file Arduino sketch. Current sources:
   USB host client: 1090 MHz / 2 MS/s I/Q demodulated on-chip (libmodes),
   frames fed into `adsb.cpp` like the other sources, with per-message
   signal level (libmodes `signal_level`) → readsb-compatible `rssi` per
-  aircraft; noise floor / strong signals / clipped samples in status. Driver vendored in
+  aircraft; noise floor / strong signals / clipped samples in status.
+  Web UI: live gain (NVS `rtl_gain`), dBm calibration K (`rtl_cal_k`,
+  `dBm = dBFS − gain + K`), `ihex` signal bytes `+SS<hex>;` (Beast scale,
+  `adsb_ihex_sig`); all via `/api/set-adsb`. Driver vendored in
   `lib/rtlsdr/` (built only with the flag, via its `gate.py`).
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
