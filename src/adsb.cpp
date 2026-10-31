@@ -12,6 +12,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/ringbuf.h>
 #include <freertos/task.h>
+#include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 extern "C" {
@@ -39,6 +41,7 @@ extern "C" {
 #define ADSB_AIRCRAFT_TTL_MS 60000
 #define ADSB_CPR_PAIR_MAX_MS 10000
 #define ADSB_PUBLISH_INTERVAL_MS 1000
+#define ADSB_RSSI_WINDOW 8 // messages averaged for rssi, as readsb
 
 static HardwareSerial adsb_serial(1);
 static RingbufHandle_t adsb_ringbuf;
@@ -74,6 +77,10 @@ struct Aircraft {
   bool has_pos = false;
   uint32_t seen_pos_ms = 0;
   uint32_t messages = 0;
+
+  // Signal levels (0..1 FS) of the last messages; RTL-SDR source only.
+  float signal[ADSB_RSSI_WINDOW] = {0};
+  uint8_t signal_idx = 0, signal_count = 0;
 
   // Navigation quality (ME31 mesub 0, airborne operational status).
   bool has_opstatus = false;
@@ -128,6 +135,28 @@ struct AdsbFramer {
   uint32_t total = 0;  // frames since boot
 };
 
+// Ring buffer item: frame hex (without '*'/';') plus its signal level.
+struct AdsbItem {
+  float signal; // 0..1 of full scale; < 0 = unknown (module sources)
+  char hex[ADSB_MAX_LINE];
+};
+
+// Counts, logs and queues one frame from source f.
+static void adsb_push(AdsbFramer &f, const char *hex, size_t len,
+                      float signal) {
+  if (f.frames < ADSB_LOG_FIRST_LINES)
+    log_w("ADS-B[%s] #%u: *%.*s;", f.name, (unsigned)f.frames + 1, (int)len,
+          hex);
+  f.frames++;
+  f.total++;
+  AdsbItem item;
+  item.signal = signal;
+  memcpy(item.hex, hex, len);
+  if (xRingbufferSend(adsb_ringbuf, &item, offsetof(AdsbItem, hex) + len, 0) !=
+      pdTRUE)
+    adsb_dropped_overflow++;
+}
+
 static void framer_reset(AdsbFramer &f) {
   f.len = 0;
   f.in_frame = false;
@@ -150,15 +179,8 @@ static void adsb_feed(AdsbFramer &f, const uint8_t *buf, size_t n) {
 
     if (c == ';') {
       f.in_frame = false;
-      if (f.len > 0) {
-        if (f.frames < ADSB_LOG_FIRST_LINES)
-          log_w("ADS-B[%s] #%u: *%.*s;", f.name, (unsigned)f.frames + 1,
-                (int)f.len, f.line);
-        f.frames++;
-        f.total++;
-        if (xRingbufferSend(adsb_ringbuf, f.line, f.len, 0) != pdTRUE)
-          adsb_dropped_overflow++;
-      }
+      if (f.len > 0)
+        adsb_push(f, f.line, f.len, -1);
       f.len = 0;
       continue;
     }
@@ -251,9 +273,9 @@ uint32_t adsb_source_rtlsdr_detached() {
   return rtlsdr_framer.frames;
 }
 
-void adsb_feed_rtlsdr(const uint8_t *buf, size_t n) {
-  if (adsb_source == SRC_RTLSDR)
-    adsb_feed(rtlsdr_framer, buf, n);
+void adsb_feed_rtlsdr(const char *hex, size_t len, float signal) {
+  if (adsb_source == SRC_RTLSDR && len <= ADSB_MAX_LINE)
+    adsb_push(rtlsdr_framer, hex, len, signal);
 }
 #endif
 
@@ -309,7 +331,7 @@ static size_t hex_to_bin(const char *hex, size_t hexlen, unsigned char *out,
   return n;
 }
 
-static void adsb_process_frame(const char *hex, size_t hexlen) {
+static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
   if (adsb_ihex_enabled) {
     char line[ADSB_MAX_LINE + 3];
     snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
@@ -344,6 +366,12 @@ static void adsb_process_frame(const char *hex, size_t hexlen) {
   uint32_t now = millis();
   ac->last_seen_ms = now;
   ac->messages++;
+  if (signal >= 0) {
+    ac->signal[ac->signal_idx] = signal;
+    ac->signal_idx = (ac->signal_idx + 1) % ADSB_RSSI_WINDOW;
+    if (ac->signal_count < ADSB_RSSI_WINDOW)
+      ac->signal_count++;
+  }
 
   if (mm.metype >= 1 && mm.metype <= 4) {
     strncpy(ac->flight, mm.flight, sizeof(ac->flight) - 1);
@@ -470,6 +498,15 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
   }
   doc["seen"] = (now - ac.last_seen_ms) / 1000.0;
   doc["messages"] = ac.messages;
+  if (ac.signal_count) {
+    // readsb: dBFS of the mean of the last 8 signal levels, +1.125e-5
+    // floor so silence doesn't yield -inf.
+    float sum = 0;
+    for (int i = 0; i < ac.signal_count; i++)
+      sum += ac.signal[i];
+    doc["rssi"] =
+        roundf(10 * log10f(sum / ac.signal_count + 1.125e-5f) * 10) / 10;
+  }
 
   String payload;
   serializeJson(doc, payload);
@@ -515,7 +552,9 @@ void adsb_loop() {
   size_t item_size = 0;
   void *item = xRingbufferReceive(adsb_ringbuf, &item_size, 0);
   if (item) {
-    adsb_process_frame((const char *)item, item_size);
+    const AdsbItem *it = (const AdsbItem *)item;
+    adsb_process_frame(it->hex, item_size - offsetof(AdsbItem, hex),
+                       it->signal);
     vRingbufferReturnItem(adsb_ringbuf, item);
   }
 

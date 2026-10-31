@@ -1,5 +1,6 @@
 #ifdef ADSB_UART
 #include "adsb.hpp"
+#include "adsb_rtlsdr.hpp"
 #endif
 #if __has_include(<M5Unified.h>)
 #define HAS_M5UNIFIED
@@ -261,6 +262,13 @@ void loop() {
 #endif
 #ifdef ADSB_RTLSDR
     doc["adsb_rtlsdr_frames"] = adsb_stats.rtlsdr_frames;
+    {
+      const AdsbRtlsdrInfo r = adsb_rtlsdr_info();
+      if (!isnan(r.noise_dbfs))
+        doc["adsb_noise_dbfs"] = roundf(r.noise_dbfs * 10) / 10;
+      doc["adsb_strong_signals"] = r.strong_signals;
+      doc["adsb_clipped"] = r.clipped;
+    }
 #endif
 #endif
     String payload;

@@ -33,10 +33,15 @@ struct AdsbRtlsdrInfo {
   uint32_t bytes;       // I/Q bytes read, all sessions
   uint32_t read_errors; // failed/short bulk reads, all sessions
   uint32_t frames;      // DF17/18 frames demodulated, all sessions
+  // Signal health, readsb stats.json semantics (dBFS, 0 = full scale).
+  float noise_dbfs;        // mean power of all samples, last buffer; NAN = none
+  uint32_t strong_signals; // frames > -3 dBFS (gain too high), all sessions
+  uint32_t clipped;        // I/Q bytes at 0 or 255 (ADC clipping), all sessions
 };
 AdsbRtlsdrInfo adsb_rtlsdr_info();
 
 // Implemented in adsb.cpp, called from the RTL-SDR task.
 void adsb_source_rtlsdr_attached();
 uint32_t adsb_source_rtlsdr_detached(); // returns frames framed this session
-void adsb_feed_rtlsdr(const uint8_t *buf, size_t n);
+// One CRC-valid frame as hex (no '*'/';'), signal level 0..1 of full scale.
+void adsb_feed_rtlsdr(const char *hex, size_t len, float signal);

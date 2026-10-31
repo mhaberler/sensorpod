@@ -300,6 +300,13 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             "%lu frames</td></tr>",
             (unsigned long)r.bytes, (unsigned long)r.read_errors,
             (unsigned long)s.rtlsdr_frames);
+    if (!isnan(r.noise_dbfs))
+      appendf(out, "<tr><td>RTL-SDR noise floor</td><td>%.1f dBFS</td></tr>",
+              r.noise_dbfs);
+    appendf(out,
+            "<tr><td>RTL-SDR overload</td><td>%lu frames &gt; -3 dBFS, %lu "
+            "clipped I/Q samples</td></tr>",
+            (unsigned long)r.strong_signals, (unsigned long)r.clipped);
 #endif
     appendf(out,
             "<tr><td>Decoder</td><td>%lu frames, %lu CRC fail, %lu decoded, "

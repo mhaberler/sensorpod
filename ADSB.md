@@ -112,9 +112,18 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
 - Takeover: first USB source attached (FTDI or RTL-SDR) wins; UART resumes
   when it detaches. Session ends on `DEV_GONE` or 10 consecutive read
   errors (then needs replug).
+- **Signal level** (readsb semantics, dBFS, 0 = full scale): libmodes
+  `mode_s_detect()` sets `mm.signal_level` = mean power of the pulse half of
+  every bit. It rides with the frame through the ring buffer (`AdsbItem`;
+  `-1` = unknown for UART/FTDI). Per aircraft the last 8 are averaged and
+  published as `rssi` = `10·log10(mean + 1.125e-5)` in `ADSB/{icao}`
+  (RTL-SDR source only; absent otherwise). Uncalibrated: shifts with gain.
 - `{hostname}/status`: `adsb_source` gains `rtlsdr`, plus
-  `adsb_rtlsdr_frames`. Web UI shows model/tuner, rate, gain, bias-tee,
-  I/Q bytes, read errors, frames.
+  `adsb_rtlsdr_frames`, `adsb_noise_dbfs` (mean power of the last 64 Ki
+  samples — messages are sparse, so ≈ noise floor), `adsb_strong_signals`
+  (frames > −3 dBFS) and `adsb_clipped` (I/Q bytes at 0/255). Rising
+  strong/clipped counts = gain too high. Web UI shows model/tuner, rate,
+  gain, bias-tee, I/Q bytes, read errors, frames, noise floor, overload.
 
 ### Mode-S decode
 
@@ -151,7 +160,9 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
      through both this new path and the pre-existing, unmodified
      DF4/5/20/21 identity decoder in this same file — both produced the
      same squawk for every pattern.
-  5. **Deferred, not decoded**: ME31 subtype 1 (surface operational
+  5. `mode_s_detect()` (RTL-SDR path only): `signal_level` per message,
+     mean pulse power 0..1 FS (dump1090-fa/readsb method), for `rssi`.
+  6. **Deferred, not decoded**: ME31 subtype 1 (surface operational
      status), and position-message-derived NIC/RC (readsb computes these
      per `metype` + version from a separate lookup table in `track.c`,
      which isn't ported).
@@ -220,7 +231,8 @@ USB dongle verified on hardware (Waveshare P4, FT232H dongle): enumerates
 at boot, configured, valid DF17 frames framed into the decoder. Unplug →
 UART fallback and re-plug not yet exercised on hardware.
 
-RTL-SDR ingest: flashed on Waveshare P4, boots clean (both USB host
+RTL-SDR signal level verified on host (synthetic DF17 at 0.5 FS →
+−6.02 dBFS). RTL-SDR ingest: flashed on Waveshare P4, boots clean (both USB host
 clients registered, PSRAM buffers allocated, no crash over 3 min).
 **Dongle attach/demod not yet tested on hardware.**
 

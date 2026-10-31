@@ -11,6 +11,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
+#include <math.h>
 #include <string.h>
 #include <usb/usb_host.h>
 
@@ -48,12 +49,17 @@ static uint16_t *mag_buf;
 
 static AdsbRtlsdrInfo info; // published once connected is set
 static volatile uint32_t total_bytes, total_errors, total_frames;
+static volatile uint32_t total_strong, total_clipped;
+static volatile float noise_dbfs = NAN;
 
 AdsbRtlsdrInfo adsb_rtlsdr_info() {
   AdsbRtlsdrInfo i = info;
   i.bytes = total_bytes;
   i.read_errors = total_errors;
   i.frames = total_frames;
+  i.noise_dbfs = noise_dbfs;
+  i.strong_signals = total_strong;
+  i.clipped = total_clipped;
   return i;
 }
 
@@ -61,16 +67,16 @@ static void on_msg(mode_s_t *, struct mode_s_msg *mm) {
   if (!mm->crcok || (mm->msgtype != 17 && mm->msgtype != 18))
     return;
   static const char hexd[] = "0123456789ABCDEF";
-  char line[2 + 2 * MODE_S_LONG_MSG_BYTES + 1];
+  char hex[2 * MODE_S_LONG_MSG_BYTES];
   size_t n = 0;
-  line[n++] = '*';
   for (int i = 0; i < mm->msgbits / 8; i++) {
-    line[n++] = hexd[mm->msg[i] >> 4];
-    line[n++] = hexd[mm->msg[i] & 0xf];
+    hex[n++] = hexd[mm->msg[i] >> 4];
+    hex[n++] = hexd[mm->msg[i] & 0xf];
   }
-  line[n++] = ';';
   total_frames++;
-  adsb_feed_rtlsdr((const uint8_t *)line, n);
+  if (mm->signal_level > 0.501187) // -3 dBFS, readsb "strong_signals"
+    total_strong++;
+  adsb_feed_rtlsdr(hex, n, (float)mm->signal_level);
 }
 
 // Opens, tunes and streams one dongle until it is unplugged or fails.
@@ -147,7 +153,19 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
       continue;
     }
     errors = 0;
+    uint32_t clipped = 0;
+    for (int k = 0; k < RTLSDR_BUF_LEN; k++)
+      clipped += iq_buf[k] == 0 || iq_buf[k] == 255;
+    total_clipped += clipped;
     mode_s_compute_magnitude_vector(iq_buf, mag_buf, RTLSDR_BUF_LEN);
+    // Noise floor: messages occupy a tiny fraction of the buffer, so the
+    // mean power of all samples is the noise power (readsb local.noise).
+    uint64_t pwr = 0;
+    for (int k = 0; k < RTLSDR_BUF_LEN / 2; k++)
+      pwr += (uint32_t)mag_buf[k] * mag_buf[k];
+    noise_dbfs =
+        10 * log10f((float)pwr / (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
+                    1e-12f);
     mode_s_detect(&mode_s_ctx, mag_buf, RTLSDR_BUF_LEN / 2, on_msg);
   }
 

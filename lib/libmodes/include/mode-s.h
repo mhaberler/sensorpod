@@ -9,6 +9,8 @@
 //  - ME28 mesub 1 (emergency/priority status): emergency code + ID13
 //    squawk field added to mode_s_msg. Bit offsets cross-checked
 //    against readsb's decodeESAircraftStatus().
+//  - mode_s_detect(): signal_level (mean power of the message's pulse
+//    samples, 0..1 of full scale; 10*log10 = dBFS, as dump1090-fa/readsb).
 // See sensorpod ADSB.md for details.
 #ifndef __MODE_S_DECODER_H
 #define __MODE_S_DECODER_H
@@ -48,6 +50,7 @@ struct mode_s_msg {
   int errorbit;        // Bit corrected. -1 if no bit corrected.
   int aa1, aa2, aa3;   // ICAO Address bytes 1 2 and 3
   int phase_corrected; // True if phase correction was applied.
+  double signal_level; // mode_s_detect() only: mean pulse power, 0..1 FS
 
   // DF 11
   int ca; // Responder capabilities.

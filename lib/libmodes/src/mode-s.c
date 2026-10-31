@@ -789,6 +789,17 @@ void mode_s_detect(mode_s_t *self, uint16_t *mag, uint32_t maglen,
       // Decode the received message
       mode_s_decode(self, &mm, msg);
 
+      // Signal level: mean power of the pulse half of every bit, as
+      // dump1090-fa/readsb. Magnitudes span 0..65167 (maglut), ~full scale.
+      double sig = 0;
+      for (i = 0; i < msglen * 8 * 2; i += 2) {
+        uint16_t a = mag[j + i + MODE_S_PREAMBLE_US * 2];
+        uint16_t b = mag[j + i + MODE_S_PREAMBLE_US * 2 + 1];
+        double on = (a > b ? a : b) / 65535.0;
+        sig += on * on;
+      }
+      mm.signal_level = sig / (msglen * 8);
+
       // Skip this message if we are sure it's fine.
       if (mm.crcok) {
         j += (MODE_S_PREAMBLE_US + (msglen * 8)) * 2;
