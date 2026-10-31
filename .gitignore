@@ -15,3 +15,6 @@ AGENT_LEARNINGS.md
 UBIQUITOUS_LANGUAGE.md
 .claude/settings.json
 
+
+# ESP-Hosted co-processor images for uploadfs (fetched, not versioned)
+data/*.bin

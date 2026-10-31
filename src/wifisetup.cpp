@@ -287,13 +287,20 @@ static void start_sta(const String &ssid, const String &pass) {
   startStaAttempt(ssid, pass);
 }
 
-void wifi_setup() {
-  #ifdef BOARD_SDIO_CUSTOM_PINS
-    WiFi.setPins(CUSTOM_SDIO_ESP_HOSTED_CLK, CUSTOM_SDIO_ESP_HOSTED_CMD,
+// SDIO pins of the ESP-Hosted co-processor. Must precede the first hosted
+// init (hosted_flash_from_fs() may init before wifi_setup()); later calls
+// are skipped since the core rejects pin changes once initialized.
+void wifi_set_hosted_pins() {
+#if defined(BOARD_SDIO_CUSTOM_PINS) || defined(BOARD_HAS_SDIO_ESP_HOSTED)
+  if (hostedIsInitialized())
+    return;
+#endif
+#ifdef BOARD_SDIO_CUSTOM_PINS
+  WiFi.setPins(CUSTOM_SDIO_ESP_HOSTED_CLK, CUSTOM_SDIO_ESP_HOSTED_CMD,
                CUSTOM_SDIO_ESP_HOSTED_D0, CUSTOM_SDIO_ESP_HOSTED_D1,
                CUSTOM_SDIO_ESP_HOSTED_D2, CUSTOM_SDIO_ESP_HOSTED_D3,
                CUSTOM_SDIO_ESP_HOSTED_RESET);
-  #else
+#else
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
   WiFi.setPins(BOARD_SDIO_ESP_HOSTED_CLK, BOARD_SDIO_ESP_HOSTED_CMD,
                BOARD_SDIO_ESP_HOSTED_D0, BOARD_SDIO_ESP_HOSTED_D1,
@@ -301,6 +308,10 @@ void wifi_setup() {
                BOARD_SDIO_ESP_HOSTED_RESET);
 #endif
 #endif
+}
+
+void wifi_setup() {
+  wifi_set_hosted_pins();
 
   WiFi.mode(WIFI_AP_STA);
 

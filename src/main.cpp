@@ -9,6 +9,7 @@
 #include "button.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
+#include "hosted_flash_fs.hpp"
 #include "i2c.hpp"
 #include "led.hpp"
 #include "listenv.hpp"
@@ -144,6 +145,10 @@ void setup() {
   hostName = WiFi.getHostname();
   hostName.toLowerCase();
   ledSetup();
+
+  // Before WiFi/BLE/USB load: re-flash the co-processor from LittleFS if its
+  // ESP-Hosted version doesn't match the host (no-op unless HOSTED_FLASH_FS).
+  hosted_flash_from_fs();
 
   // Read device role early
 #ifdef ADSB_UART
