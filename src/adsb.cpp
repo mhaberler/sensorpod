@@ -8,6 +8,7 @@
 #include "deviceconfig.hpp"
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
+#include "nicrc.h"
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
 #include <freertos/FreeRTOS.h>
@@ -112,6 +113,15 @@ struct Aircraft {
   int nic_baro = -1;
   int sil = -1;
   int sil_type = -1;
+  int nic_a = -1; // NIC supplements from operational status (0/1)
+  int nic_c = -1;
+  int sda = -1;   // System Design Assurance (op-status v2)
+  int nac_v = -1; // velocity accuracy (TC19, surface op-status v2)
+
+  // NIC / Rc (m, 0 = unknown) of the last global CPR solution: min NIC /
+  // max Rc of the pair, as readsb.
+  bool has_nic = false;
+  unsigned nic = 0, rc = 0;
 
   // Emergency/priority status (ME28 mesub 1).
   int emergency = -1;
@@ -120,6 +130,7 @@ struct Aircraft {
   bool even_valid = false, odd_valid = false;
   int even_lat = 0, even_lon = 0, odd_lat = 0, odd_lon = 0;
   uint32_t even_ms = 0, odd_ms = 0;
+  unsigned even_nic = 0, even_rc = 0, odd_nic = 0, odd_rc = 0;
 
   uint32_t last_seen_ms = 0;
   uint32_t last_published_ms = 0;
@@ -429,10 +440,24 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
     strncpy(ac->flight, mm.flight, sizeof(ac->flight) - 1);
     ac->category = mm.aircraft_type;
     ac->has_flight = true;
-  } else if (mm.metype >= 9 && mm.metype <= 18) {
-    // Airborne position: CPR pairing + global decode.
-    ac->alt_baro = mm.altitude;
-    ac->has_alt_baro = true;
+  } else if ((mm.metype >= 9 && mm.metype <= 18) ||
+             (mm.metype >= 20 && mm.metype <= 22)) {
+    // Airborne position: CPR pairing + global decode. TC20-22 carry GNSS
+    // height instead of barometric altitude.
+    if (mm.metype >= 20) {
+      ac->alt_geom = mm.altitude;
+      ac->has_alt_geom = true;
+    } else {
+      ac->alt_baro = mm.altitude;
+      ac->has_alt_baro = true;
+    }
+    // NIC / Rc per CPR half (readsb compute_nic_rc_from_message): ADS-B
+    // version 0 until op-status says otherwise.
+    unsigned version = ac->nav_version > 0 ? ac->nav_version : 0;
+    unsigned nic_a = ac->nic_a == 1, nic_c = ac->nic_c == 1;
+    unsigned nic_b = mm.nic_b_valid && mm.nic_b;
+    unsigned nic = compute_nic(mm.metype, version, nic_a, nic_b, nic_c);
+    unsigned rc = compute_rc(mm.metype, version, nic_a, nic_b, nic_c);
 
     raw_store(ac, mm.fflag ? RF_POS_ODD : RF_POS_EVEN, msg, nbytes, signal,
               now);
@@ -441,11 +466,15 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
       ac->odd_lon = mm.raw_longitude;
       ac->odd_ms = now;
       ac->odd_valid = true;
+      ac->odd_nic = nic;
+      ac->odd_rc = rc;
     } else {
       ac->even_lat = mm.raw_latitude;
       ac->even_lon = mm.raw_longitude;
       ac->even_ms = now;
       ac->even_valid = true;
+      ac->even_nic = nic;
+      ac->even_rc = rc;
     }
 
     if (ac->even_valid && ac->odd_valid &&
@@ -458,10 +487,15 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
         ac->lon = lon;
         ac->has_pos = true;
         ac->seen_pos_ms = now;
+        ac->nic = ac->even_nic < ac->odd_nic ? ac->even_nic : ac->odd_nic;
+        ac->rc = ac->even_rc > ac->odd_rc ? ac->even_rc : ac->odd_rc;
+        ac->has_nic = true;
       }
     }
   } else if (mm.metype == 19 && mm.mesub >= 1 && mm.mesub <= 4) {
     raw_store(ac, RF_VEL, msg, nbytes, signal, now);
+    if (mm.nac_v_valid)
+      ac->nac_v = mm.nac_v;
     ac->baro_rate = mm.vert_rate_sign ? -mm.vert_rate : mm.vert_rate;
     ac->has_baro_rate = true;
     if (mm.mesub == 1 || mm.mesub == 2) {
@@ -476,10 +510,21 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
       ac->alt_geom = ac->alt_baro + delta;
       ac->has_alt_geom = true;
     }
-  } else if (mm.metype == 31 && mm.mesub == 0 && mm.opstatus_valid) {
+  } else if (mm.metype == 31 && (mm.mesub == 0 || mm.mesub == 1) &&
+             mm.opstatus_valid) {
+    // Airborne (st0) or surface (st1) operational status; GVA/NIC-baro only
+    // in st0, NACv/NIC-C only in st1 (libmodes sets the *_valid flags).
     raw_store(ac, RF_OPSTATUS, msg, nbytes, signal, now);
     ac->has_opstatus = true;
     ac->nav_version = mm.opstatus_version;
+    if (mm.nic_a_valid)
+      ac->nic_a = mm.nic_a;
+    if (mm.nic_c_valid)
+      ac->nic_c = mm.nic_c;
+    if (mm.nac_v_valid)
+      ac->nac_v = mm.nac_v;
+    if (mm.sda_valid)
+      ac->sda = mm.sda;
     if (mm.nac_p_valid)
       ac->nac_p = mm.nac_p;
     if (mm.gva_valid)
@@ -538,6 +583,10 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
   if (ac.has_pos) {
     doc["lat"] = ac.lat;
     doc["lon"] = ac.lon;
+    if (ac.has_nic) {
+      doc["nic"] = ac.nic;
+      doc["rc"] = ac.rc;
+    }
     doc["seen_pos"] = (now - ac.seen_pos_ms) / 1000.0;
   }
   if (ac.has_opstatus) {
@@ -552,7 +601,11 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
     }
     if (ac.gva >= 0)
       doc["gva"] = ac.gva;
+    if (ac.sda >= 0)
+      doc["sda"] = ac.sda;
   }
+  if (ac.nac_v >= 0)
+    doc["nac_v"] = ac.nac_v;
   doc["seen"] = (now - ac.last_seen_ms) / 1000.0;
   doc["messages"] = ac.messages;
   if (ac.signal_count) {

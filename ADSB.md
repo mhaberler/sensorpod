@@ -182,10 +182,23 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
      same squawk for every pattern.
   5. `mode_s_detect()` (RTL-SDR path only): `signal_level` per message,
      mean pulse power 0..1 FS (dump1090-fa/readsb method), for `rssi`.
-  6. **Deferred, not decoded**: ME31 subtype 1 (surface operational
-     status), and position-message-derived NIC/RC (readsb computes these
-     per `metype` + version from a separate lookup table in `track.c`,
-     which isn't ported).
+  6. ME31 subtype 1 (surface operational status): same common fields as
+     st0 (version, NIC-A, NACp, SIL/SIL-type) plus NACv and NIC-C (v2);
+     GVA/NIC-baro only in st0 (st1 uses ME53 for track/heading). SDA (v2,
+     both subtypes, ME31–32 when ME25–26 = 0). `opstatus_mesub` tells
+     which subtype. Surface *positions* (TC5–8) are still not decoded, so
+     st1 only feeds the shared fields.
+  7. Airborne position TC20–22 (GNSS height) decoded like TC9–18, altitude
+     goes to `alt_geom`; NIC supplement-B (ME bit 8) for TC9–22; TC19
+     subtypes 1–4 carry NACv (ME11–13). Bits per readsb
+     `decodeESAirbornePosition()` / `decodeESAirborneVelocity()`.
+- `src/nicrc.c` / `src/nicrc.h` — readsb's `compute_nic()` / `compute_rc()`
+  from `track.c`, ported **verbatim** (GPL-3). NIC/Rc are computed per CPR
+  half from TC, ADS-B version (0 until op-status is seen), NIC-A/NIC-C
+  (op-status) and NIC-B (the position message); a global CPR solution
+  publishes `nic` = min and `rc` = max of the pair (readsb `doGlobalCPR`).
+  `rc` is in metres, 0 = unknown. Host-tested against readsb's tables for
+  TC9–22 plus synthetic CRC-valid TC11/TC19/TC20/ME31 st0+st1 frames.
 - `src/cpr.c` / `src/cpr.h` — readsb's CPR position solver, ported
   **verbatim** (GPL-3, same license as this repo). Only
   `decodeCPRairborne()` is used: global position solve from an even/odd
@@ -209,10 +222,13 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   using the default.
 - JSON schema: readsb `aircraft.json` field names, subset —
   `hex`, `flight`, `category`, `alt_baro`, `alt_geom`, `gs`, `track`,
-  `baro_rate`, `squawk`, `emergency`, `lat`, `lon`, `seen_pos`, `version`,
-  `nic_baro`, `nac_p`, `sil`, `sil_type`, `gva`, `seen`, `messages`.
+  `baro_rate`, `squawk`, `emergency`, `lat`, `lon`, `nic`, `rc`,
+  `seen_pos`, `version`, `nic_baro`, `nac_p`, `sil`, `sil_type`, `gva`,
+  `sda`, `nac_v`, `seen`, `messages` (+ `rssi`/`rssi_dbm`, RTL-SDR).
   Fields are omitted (not zero-filled) until decoded at least once.
-  `version`/`nic_baro`/`nac_p`/`sil`/`sil_type`/`gva` come from ME31 and
+  `nic`/`rc` accompany a position (global CPR pair). `nac_v` comes from
+  velocity messages or surface op-status.
+  `version`/`nic_baro`/`nac_p`/`sil`/`sil_type`/`gva`/`sda` come from ME31 and
   only appear once an aircraft has sent an Operational Status message
   (typically every few seconds, version 1/2 transponders only).
   `squawk`/`emergency` come from ME28 and only appear if the aircraft is
@@ -292,8 +308,9 @@ fresh `ADSB/#` subscriber got all 14 live aircraft within 1.6 s; a fresh
 
 ## Deferred / not implemented
 
-- ME31 subtype 1 (surface operational status), and position-message-
-  derived NIC/RC (see above) — no consumer yet; add later if needed.
+- Surface positions (TC5–8): need a receiver reference position for
+  local CPR; ME31 st1 is decoded but only feeds the shared op-status
+  fields.
 - Local/relative CPR and any receiver-reference-position logic — this is
   a balloon-borne, moving receiver; a position feed may be added later
   to enable range gating, but isn't required for the global airborne CPR

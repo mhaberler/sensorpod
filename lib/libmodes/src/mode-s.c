@@ -456,8 +456,11 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
       mm->flight[6] = ais_charset[((msg[9] & 15) << 2) | (msg[10] >> 6)];
       mm->flight[7] = ais_charset[msg[10] & 63];
       mm->flight[8] = '\0';
-    } else if (mm->metype >= 9 && mm->metype <= 18) {
-      // Airborne position Message
+    } else if ((mm->metype >= 9 && mm->metype <= 18) ||
+               (mm->metype >= 20 && mm->metype <= 22)) {
+      // Airborne position Message (TC20-22: altitude is GNSS height)
+      mm->nic_b_valid = 1;
+      mm->nic_b = me_getbit(msg, 8);
       mm->fflag = msg[6] & (1 << 2);
       mm->tflag = msg[6] & (1 << 3);
       mm->altitude = decode_ac12_field(msg, &mm->unit);
@@ -465,6 +468,8 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
       mm->raw_longitude = ((msg[8] & 1) << 16) | (msg[9] << 8) | msg[10];
     } else if (mm->metype == 19 && mm->mesub >= 1 && mm->mesub <= 4) {
       // Airborne Velocity Message
+      mm->nac_v_valid = 1;
+      mm->nac_v = me_getbits(msg, 11, 13);
       if (mm->mesub == 1 || mm->mesub == 2) {
         mm->ew_dir = (msg[5] & 4) >> 2;
         mm->ew_velocity = ((msg[5] & 3) << 8) | msg[6];
@@ -504,14 +509,16 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
         mm->heading_is_valid = msg[5] & (1 << 2);
         mm->heading = (360.0 / 128) * (((msg[5] & 3) << 5) | (msg[6] >> 3));
       }
-    } else if (mm->metype == 31 && mm->mesub == 0) {
-      // Operational Status, airborne (mesub 0). Bit numbers are
-      // ME-relative (1-based), cross-checked against readsb's
+    } else if (mm->metype == 31 && (mm->mesub == 0 || mm->mesub == 1)) {
+      // Operational Status, airborne (mesub 0) or surface (mesub 1). Bit
+      // numbers are ME-relative (1-based), cross-checked against readsb's
       // decodeESOperationalStatus() (patch: sensorpod). Only versions 1
       // and 2 carry NIC-A/NACp/GVA/SIL - version 0 has none of these, so
-      // opstatus_valid is left 0 for it.
+      // opstatus_valid is left 0 for it. GVA and NIC-baro exist only in
+      // the airborne subtype (surface uses ME53 for track/heading).
       unsigned version = me_getbits(msg, 41, 43);
       mm->opstatus_version = version;
+      mm->opstatus_mesub = mm->mesub;
       if (version == 1 || version == 2) {
         mm->opstatus_valid = 1;
         mm->nic_a_valid = 1;
@@ -522,14 +529,27 @@ void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg) {
         mm->sil = me_getbits(msg, 51, 52);
         if (version == 1) {
           mm->sil_type = 0; // per-hour (version 1 doesn't distinguish)
-          mm->nic_baro_valid = 1;
-          mm->nic_baro = me_getbit(msg, 53);
+          if (mm->mesub == 0) {
+            mm->nic_baro_valid = 1;
+            mm->nic_baro = me_getbit(msg, 53);
+          }
         } else {                             // version == 2
           mm->sil_type = me_getbit(msg, 55); // 1 = per-sample
-          mm->gva_valid = 1;
-          mm->gva = me_getbits(msg, 49, 50);
-          mm->nic_baro_valid = 1;
-          mm->nic_baro = me_getbit(msg, 53);
+          if (me_getbits(msg, 25, 26) == 0) {
+            mm->sda_valid = 1;
+            mm->sda = me_getbits(msg, 31, 32);
+          }
+          if (mm->mesub == 0) {
+            mm->gva_valid = 1;
+            mm->gva = me_getbits(msg, 49, 50);
+            mm->nic_baro_valid = 1;
+            mm->nic_baro = me_getbit(msg, 53);
+          } else if (me_getbits(msg, 9, 10) == 0) {
+            mm->nac_v_valid = 1;
+            mm->nac_v = me_getbits(msg, 17, 19);
+            mm->nic_c_valid = 1;
+            mm->nic_c = me_getbit(msg, 20);
+          }
         }
       }
     } else if (mm->metype == 28 && mm->mesub == 1) {

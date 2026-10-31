@@ -100,6 +100,8 @@ Multi-file Arduino sketch. Current sources:
   (`mqtt_publish(..., retain)`), `MQTTClient::sweep_retained()` clears
   ghosts on reconnect. Status carries `boot` (random per boot). Driver vendored in
   `lib/rtlsdr/` (built only with the flag, via its `gate.py`).
+- `src/nicrc.c/h` — readsb `compute_nic()`/`compute_rc()` (verbatim, GPL-3):
+  NIC/Rc per CPR half → `nic`/`rc` in `ADSB/{icao}`.
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
   prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).

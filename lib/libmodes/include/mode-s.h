@@ -9,6 +9,12 @@
 //  - ME28 mesub 1 (emergency/priority status): emergency code + ID13
 //    squawk field added to mode_s_msg. Bit offsets cross-checked
 //    against readsb's decodeESAircraftStatus().
+//  - ME31 mesub 1 (surface operational status): same common fields
+//    (version, NIC-A, NACp, SIL/SIL-type) plus NACv/NIC-C (v2); no
+//    GVA/NIC-baro. SDA (v2, both subtypes). opstatus_mesub tells which.
+//  - Airborne position TC20-22 (GNSS height) decoded like TC9-18; NIC-B
+//    (ME bit 8) for both. TC19 st1-4: NACv. Bits per readsb
+//    decodeESOperationalStatus/AirbornePosition/AirborneVelocity.
 //  - mode_s_detect(): signal_level (mean power of the message's pulse
 //    samples, 0..1 of full scale; 10*log10 = dBFS, as dump1090-fa/readsb).
 // See sensorpod ADSB.md for details.
@@ -90,8 +96,17 @@ struct mode_s_msg {
   int nic_baro_valid;
   int nic_baro; // Barometric altitude integrity.
   int sil_valid;
-  int sil;      // Source Integrity Level (0-3).
-  int sil_type; // 0 = per-hour, 1 = per-sample (version 2 only).
+  int sil;            // Source Integrity Level (0-3).
+  int sil_type;       // 0 = per-hour, 1 = per-sample (version 2 only).
+  int opstatus_mesub; // 0 = airborne, 1 = surface operational status.
+  int nic_c_valid;
+  int nic_c; // NIC supplement C (surface op-status, version 2).
+  int nac_v_valid;
+  int nac_v; // Navigation Accuracy Category, velocity (TC19, st1 v2).
+  int sda_valid;
+  int sda; // System Design Assurance (op-status version 2).
+  int nic_b_valid;
+  int nic_b; // NIC supplement B (v2) / single antenna flag (v0/1), TC9-22.
 
   // ME28 (Aircraft Status), mesub 1 (Emergency/Priority Status).
   int es_emergency_valid;
