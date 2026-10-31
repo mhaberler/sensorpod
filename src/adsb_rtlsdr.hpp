@@ -41,7 +41,11 @@ struct AdsbRtlsdrInfo {
   uint32_t strong_signals; // frames > -3 dBFS (gain too high), all sessions
   uint32_t clipped;        // I/Q bytes at 0 or 255 (ADC clipping), all sessions
   float cal_k;             // dBm = dBFS - gain + cal_k; NAN = uncalibrated
-  float noise_dbm;         // NAN unless calibrated and noise known
+  // Airtime actually processed (EMA per buffer): each buffer holds
+  // RTLSDR_BUF_LEN/2 samples = 32.8 ms at 2 MS/s.
+  float demod_duty; // demod time / buffer duration, %
+  float coverage;   // buffer duration / (read + demod time), %
+  float noise_dbm;  // NAN unless calibrated and noise known
 };
 AdsbRtlsdrInfo adsb_rtlsdr_info();
 

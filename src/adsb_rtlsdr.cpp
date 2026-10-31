@@ -9,6 +9,7 @@
 #include "deviceconfig.hpp"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -54,6 +55,7 @@ static volatile uint32_t total_bytes, total_errors, total_frames;
 static volatile uint32_t total_strong, total_clipped;
 static volatile float noise_dbfs = NAN;
 static volatile float cal_k = NAN;
+static volatile float demod_duty_ema, coverage_ema;
 static volatile int pending_gain = INT_MIN; // set by web server
 
 AdsbRtlsdrInfo adsb_rtlsdr_info() {
@@ -65,6 +67,8 @@ AdsbRtlsdrInfo adsb_rtlsdr_info() {
   i.strong_signals = total_strong;
   i.clipped = total_clipped;
   i.cal_k = cal_k;
+  i.demod_duty = demod_duty_ema;
+  i.coverage = coverage_ema;
   i.noise_dbm = adsb_rtlsdr_dbm(i.noise_dbfs);
   return i;
 }
@@ -179,6 +183,7 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
       }
     }
     bool ok = true;
+    int64_t t_read = esp_timer_get_time();
     for (int off = 0; off < RTLSDR_BUF_LEN && !gone; off += RTLSDR_XFER) {
       int n = 0;
       r = rtlsdr_read_sync(dev, iq_buf + off, RTLSDR_XFER, &n);
@@ -200,6 +205,7 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
       continue;
     }
     errors = 0;
+    int64_t t_demod = esp_timer_get_time();
     uint32_t clipped = 0;
     for (int k = 0; k < RTLSDR_BUF_LEN; k++)
       clipped += iq_buf[k] == 0 || iq_buf[k] == 255;
@@ -214,6 +220,17 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
         10 * log10f((float)pwr / (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
                     1e-12f);
     mode_s_detect(&mode_s_ctx, mag_buf, RTLSDR_BUF_LEN / 2, on_msg);
+
+    // Buffer airtime vs. time spent reading + demodulating it; samples
+    // arriving while demodulating are lost (sync reads, no queueing).
+    const float buf_us = RTLSDR_BUF_LEN / 2 * 1e6f / RTLSDR_RATE;
+    int64_t t_end = esp_timer_get_time();
+    float duty = 100.0f * (t_end - t_demod) / buf_us;
+    // Reads can drain the dongle's FIFO faster than real time: cap at 100.
+    float cov = fminf(100.0f, 100.0f * buf_us / (float)(t_end - t_read));
+    demod_duty_ema =
+        demod_duty_ema ? demod_duty_ema * 0.95f + duty * 0.05f : duty;
+    coverage_ema = coverage_ema ? coverage_ema * 0.95f + cov * 0.05f : cov;
   }
 
   info.connected = false;

@@ -7,6 +7,7 @@
 #include <M5Unified.h>
 #endif
 #include "button.hpp"
+#include "cpuload.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "hosted_flash_fs.hpp"
@@ -223,6 +224,29 @@ void loop() {
 
   unsigned long now = millis();
   button_loop();
+
+  // CPU load: new interval every CPULOAD_INTERVAL_MS -> topic "cpu" (top
+  // tasks; full table on the web UI). Compact rows keep it under PicoMQTT's
+  // default 1 KiB client message size.
+  if (cpuload_loop() && !hosted_update_busy()) {
+    const CpuLoad &c = cpuload_get();
+    JsonDocument doc;
+    doc["window_ms"] = c.window_ms;
+    JsonArray cores = doc["cores"].to<JsonArray>();
+    for (int k = 0; k < c.cores; k++)
+      cores.add(roundf(c.core[k] * 10) / 10);
+    JsonArray tasks = doc["tasks"].to<JsonArray>(); // [name, core, %, stack]
+    for (int k = 0; k < c.ntasks && k < 16; k++) {
+      JsonArray t = tasks.add<JsonArray>();
+      t.add(c.tasks[k].name);
+      t.add(c.tasks[k].core);
+      t.add(roundf(c.tasks[k].pct * 10) / 10);
+      t.add(c.tasks[k].stack);
+    }
+    String payload;
+    serializeJson(doc, payload);
+    mqtt_publish("cpu", payload.c_str());
+  }
   if (ble_scan_enabled && blescanner_started())
     blescanner_loop();
 #if defined(HAS_M5UNIFIED)
@@ -251,6 +275,11 @@ void loop() {
     doc["uptime"] = now / 1000;
     doc["boot"] = boot_id;
     doc["cpu_temperature"] = temperatureRead();
+    if (cpuload_get().valid) {
+      const CpuLoad &c = cpuload_get();
+      for (int k = 0; k < c.cores; k++)
+        doc[k ? "cpu1" : "cpu0"] = roundf(c.core[k] * 10) / 10;
+    }
     doc["rssi"] = WiFi.RSSI();
     if (numClicks) {
       doc["clicks"] = numClicks;
@@ -278,8 +307,11 @@ void loop() {
         doc["adsb_noise_dbfs"] = roundf(r.noise_dbfs * 10) / 10;
       if (!isnan(r.noise_dbm))
         doc["adsb_noise_dbm"] = roundf(r.noise_dbm * 10) / 10;
-      if (r.connected)
+      if (r.connected) {
         doc["adsb_rtl_gain"] = r.gain / 10.0;
+        doc["adsb_rtl_demod_duty"] = roundf(r.demod_duty * 10) / 10;
+        doc["adsb_rtl_coverage"] = roundf(r.coverage * 10) / 10;
+      }
       doc["adsb_strong_signals"] = r.strong_signals;
       doc["adsb_clipped"] = r.clipped;
     }

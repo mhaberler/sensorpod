@@ -7,6 +7,7 @@
 #include <stdarg.h>
 
 #include "BLEScanner.h"
+#include "cpuload.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
@@ -346,6 +347,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             "<tr><td>RTL-SDR overload</td><td>%lu frames &gt; -3 dBFS, %lu "
             "clipped I/Q samples</td></tr>",
             (unsigned long)r.strong_signals, (unsigned long)r.clipped);
+    if (r.connected)
+      appendf(out,
+              "<tr><td>RTL-SDR airtime</td><td>%.1f %% of samples "
+              "demodulated, demod %.1f %% of buffer time</td></tr>",
+              r.coverage, r.demod_duty);
 #endif
     appendf(out,
             "<tr><td>Decoder</td><td>%lu frames, %lu CRC fail, %lu decoded, "
@@ -679,6 +685,34 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>Cores: %u</li>", ESP.getChipCores());
   appendf(out, "<li>Rev: %u</li>", ESP.getChipRevision());
   appendf(out, "<li>CPU: %u MHz</li></ul>", (unsigned)ESP.getCpuFreqMHz());
+
+  {
+    // FreeRTOS run-time stats over the last CPULOAD_INTERVAL_MS window;
+    // task % is of one core (100 % = one core busy).
+    const CpuLoad &c = cpuload_get();
+    out += "<h3>CPU load</h3>";
+    if (!c.valid) {
+      out += "<p>collecting (first window)</p>";
+    } else {
+      out += "<p>";
+      for (int k = 0; k < c.cores; k++)
+        appendf(out, "%score %d: %.1f %%", k ? ", " : "", k, c.core[k]);
+      appendf(out, " (last %lu ms)</p>", (unsigned long)c.window_ms);
+      out += "<table><tr><th>Task</th><th>Core</th><th>Prio</th>"
+             "<th>%</th><th>Stack free</th></tr>";
+      for (int k = 0; k < c.ntasks; k++) {
+        const CpuTask &t = c.tasks[k];
+        char core[4] = "-";
+        if (t.core >= 0)
+          snprintf(core, sizeof(core), "%d", t.core);
+        appendf(out,
+                "<tr><td>%s</td><td>%s</td><td>%u</td><td>%.1f</td>"
+                "<td>%lu</td></tr>",
+                t.name, core, t.prio, t.pct, (unsigned long)t.stack);
+      }
+      out += "</table>";
+    }
+  }
 
   out += "<h3>Memory</h3><ul>";
   {
