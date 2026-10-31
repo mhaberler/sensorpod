@@ -36,4 +36,4 @@ Unified settings on `/` (sysinfo page) showing:
 - Reboot button
 - Topic prefix checkbox (applied live)
 - I2C scan button with bus/address table
-- ADS-B builds: aircraft / ihex publish checkboxes (applied live), UART/USB status and dongle properties
+- ADS-B builds: aircraft / ihex publish checkboxes (applied live), UART/USB/RTL-SDR status and dongle properties

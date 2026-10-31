@@ -1,4 +1,5 @@
 #include "adsb.hpp"
+#include "adsb_rtlsdr.hpp"
 #include "adsb_usb.hpp"
 
 #ifdef ADSB_UART
@@ -174,7 +175,11 @@ static void adsb_feed(AdsbFramer &f, const uint8_t *buf, size_t n) {
 }
 
 static AdsbFramer uart_framer = {"uart"};
-static volatile bool adsb_usb_active = false;
+
+// Frame source feeding the ring buffer. A USB source takes over from the
+// UART when attached; the first USB source attached wins.
+enum AdsbSource : uint8_t { SRC_UART, SRC_FTDI, SRC_RTLSDR };
+static volatile AdsbSource adsb_source = SRC_UART;
 
 static void adsb_reader_task(void *arg) {
   uint8_t buf[256];
@@ -193,7 +198,7 @@ static void adsb_reader_task(void *arg) {
       adsb_uart_bytes += n;
       adsb_uart_last_rx_ms = millis();
     }
-    bool usb = adsb_usb_active;
+    bool usb = adsb_source != SRC_UART;
     if (usb != was_usb) {
       // Source switch: restart framing and first-line logging.
       framer_reset(uart_framer);
@@ -212,18 +217,43 @@ static uint32_t adsb_usb_frames = 0;
 
 void adsb_source_usb_attached() {
   framer_reset(usb_framer);
-  adsb_usb_active = true;
+  if (adsb_source == SRC_UART)
+    adsb_source = SRC_FTDI;
 }
 
 uint32_t adsb_source_usb_detached() {
-  adsb_usb_active = false;
+  if (adsb_source == SRC_FTDI)
+    adsb_source = SRC_UART;
   adsb_usb_frames += usb_framer.frames;
   return usb_framer.frames;
 }
 
 void adsb_feed_usb(const uint8_t *buf, size_t n) {
-  if (adsb_usb_active)
+  if (adsb_source == SRC_FTDI)
     adsb_feed(usb_framer, buf, n);
+}
+#endif
+
+#ifdef ADSB_RTLSDR
+static AdsbFramer rtlsdr_framer = {"rtlsdr"};
+static uint32_t adsb_rtlsdr_frames = 0;
+
+void adsb_source_rtlsdr_attached() {
+  framer_reset(rtlsdr_framer);
+  if (adsb_source == SRC_UART)
+    adsb_source = SRC_RTLSDR;
+}
+
+uint32_t adsb_source_rtlsdr_detached() {
+  if (adsb_source == SRC_RTLSDR)
+    adsb_source = SRC_UART;
+  adsb_rtlsdr_frames += rtlsdr_framer.frames;
+  return rtlsdr_framer.frames;
+}
+
+void adsb_feed_rtlsdr(const uint8_t *buf, size_t n) {
+  if (adsb_source == SRC_RTLSDR)
+    adsb_feed(rtlsdr_framer, buf, n);
 }
 #endif
 
@@ -248,6 +278,9 @@ void adsb_setup() {
         ADSB_TX_PIN);
 #ifdef ADSB_USB
   adsb_usb_setup();
+#endif
+#ifdef ADSB_RTLSDR
+  adsb_rtlsdr_setup();
 #endif
 }
 
@@ -510,8 +543,13 @@ AdsbStats adsb_get_stats() {
   s.uart_frames = uart_framer.total;
   s.uart_last_rx_ms = adsb_uart_last_rx_ms;
 #ifdef ADSB_USB
-  s.usb_active = adsb_usb_active;
-  s.usb_frames = adsb_usb_frames + (adsb_usb_active ? usb_framer.frames : 0);
+  s.usb_active = adsb_source == SRC_FTDI;
+  s.usb_frames = adsb_usb_frames + (s.usb_active ? usb_framer.frames : 0);
+#endif
+#ifdef ADSB_RTLSDR
+  s.rtlsdr_active = adsb_source == SRC_RTLSDR;
+  s.rtlsdr_frames =
+      adsb_rtlsdr_frames + (s.rtlsdr_active ? rtlsdr_framer.frames : 0);
 #endif
   return s;
 }

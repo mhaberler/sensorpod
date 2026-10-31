@@ -86,6 +86,10 @@ Multi-file Arduino sketch. Current sources:
   attached FTDI ADS-B dongle (also via hub) takes over from the UART source
   in `adsb.cpp` until unplugged. `adsb_usb_info()` exposes dongle
   properties + traffic for the web UI ADS-B section.
+- `src/adsb_rtlsdr.cpp` — (`-DADSB_RTLSDR`, P4) RTL-SDR dongle on a second
+  USB host client: 1090 MHz / 2 MS/s I/Q demodulated on-chip (libmodes),
+  frames fed into `adsb.cpp` like the other sources. Driver vendored in
+  `lib/rtlsdr/` (built only with the flag, via its `gate.py`).
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
   prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).

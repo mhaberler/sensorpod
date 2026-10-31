@@ -18,6 +18,7 @@
 #include "reset_reason.hpp"
 #ifdef ADSB_UART
 #include "adsb.hpp"
+#include "adsb_rtlsdr.hpp"
 #include "adsb_usb.hpp"
 #endif
 
@@ -245,7 +246,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     out += "<table>";
 #ifdef ADSB_USB
     appendf(out, "<tr><td>Active source</td><td>%s</td></tr>",
-            s.usb_active ? "USB" : "UART");
+            s.rtlsdr_active ? "RTL-SDR"
+            : s.usb_active  ? "USB"
+                            : "UART");
 #endif
     appendf(out, "<tr><td>UART</td><td>RX GPIO%d / TX GPIO%d, %d 8N1</td></tr>",
             (int)ADSB_RX_PIN, (int)ADSB_TX_PIN, ADSB_BAUD);
@@ -277,6 +280,26 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     }
     appendf(out, "<tr><td>USB traffic</td><td>%lu bytes, %lu frames</td></tr>",
             (unsigned long)u.bytes, (unsigned long)s.usb_frames);
+#endif
+#ifdef ADSB_RTLSDR
+    const AdsbRtlsdrInfo r = adsb_rtlsdr_info();
+    appendf(out, "<tr><td>RTL-SDR</td><td>%s</td></tr>",
+            r.connected ? "connected" : "not connected");
+    if (r.connected) {
+      appendf(out, "<tr><td>RTL-SDR device</td><td>%04x:%04x %s</td></tr>",
+              r.vid, r.pid, r.model);
+      appendf(out,
+              "<tr><td>RTL-SDR tuning</td><td>%lu S/s, gain %.1f dB, "
+              "bias-tee %s</td></tr>",
+              (unsigned long)r.rate, r.gain / 10.0, r.bias_tee ? "on" : "off");
+      appendf(out, "<tr><td>RTL-SDR connected for</td><td>%lus</td></tr>",
+              (unsigned long)((now - r.attached_ms) / 1000));
+    }
+    appendf(out,
+            "<tr><td>RTL-SDR traffic</td><td>%lu I/Q bytes, %lu read errors, "
+            "%lu frames</td></tr>",
+            (unsigned long)r.bytes, (unsigned long)r.read_errors,
+            (unsigned long)s.rtlsdr_frames);
 #endif
     appendf(out,
             "<tr><td>Decoder</td><td>%lu frames, %lu CRC fail, %lu decoded, "

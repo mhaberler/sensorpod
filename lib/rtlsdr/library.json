@@ -1,0 +1,16 @@
+{
+  "name": "rtlsdr",
+  "version": "0.0.1+6fd3692e",
+  "description": "RTL2832U/R820T/R828D RTL-SDR driver on the ESP-IDF USB Host Library, vendored from jstockdale/T-Display-P4 (adsb branch, main/examples/adsb_receiver), itself osmocom librtlsdr via kvhnuke's ESP32 port",
+  "license": "GPL-2.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jstockdale/T-Display-P4.git"
+  },
+  "platforms": "espressif32",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "extraScript": "gate.py"
+  }
+}

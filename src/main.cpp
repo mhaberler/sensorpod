@@ -254,8 +254,13 @@ void loop() {
     doc["adsb_dropped_overflow"] = adsb_stats.dropped_overflow;
     doc["adsb_aircraft"] = adsb_stats.aircraft_count;
 #ifdef ADSB_USB
-    doc["adsb_source"] = adsb_stats.usb_active ? "usb" : "uart";
+    doc["adsb_source"] = adsb_stats.rtlsdr_active ? "rtlsdr"
+                         : adsb_stats.usb_active  ? "usb"
+                                                  : "uart";
     doc["adsb_usb_frames"] = adsb_stats.usb_frames;
+#endif
+#ifdef ADSB_RTLSDR
+    doc["adsb_rtlsdr_frames"] = adsb_stats.rtlsdr_frames;
 #endif
 #endif
     String payload;

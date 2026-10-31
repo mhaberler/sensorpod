@@ -83,6 +83,39 @@ stream (lines end in `\r\n`, ignored by the framer). Enabled in
 - Harmless at boot: `E ENUM: Short string desc corrupt` ×3 from the
   FT232H's string descriptors.
 
+### RTL-SDR ingest (`src/adsb_rtlsdr.cpp`, `-DADSB_RTLSDR`)
+
+Plain RTL-SDR dongle (RTL2832U + R820T/R828D, `0bda:2832`/`0bda:2838`:
+Blog V3/V4, NooElec, generic) on the P4 USB host, demodulated on-chip.
+Needs USB 2.0 High-Speed for 2 MS/s → **ESP32-P4 only** (Full-Speed
+S2/S3 top out ~0.3 MS/s). Requires `ADSB_UART` + `ADSB_USB` (host install
+lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
+
+- Driver: `lib/rtlsdr/`, vendored unmodified from
+  [ADS-B Scope](https://github.com/jstockdale/T-Display-P4) (`adsb`
+  branch, osmocom librtlsdr + `esp_libusb` shim, GPL-2.0-or-later); see
+  its README. `gate.py` (library `extraScript`) compiles it only when
+  `ADSB_RTLSDR` is defined — `lib_ldf_mode = deep` ignores `#ifdef`, and
+  non-OTG chips have no `usb/usb_host.h`.
+- Second USB host client next to the FTDI one; both see every attach, each
+  ignores foreign VID:PIDs. Driver transfers are synchronous and pump
+  client events themselves, so one task (`adsb_rtlsdr`) waits for attach
+  and runs the session: 8 × 16 KiB bulk reads (PSRAM) → magnitude →
+  libmodes `mode_s_detect()` (single-bit fix on, aggressive off) → repeat.
+  Samples arriving during demod are dropped (same as ADS-B Scope).
+- 1090 MHz, 2 MS/s, manual gain `ADSB_RTLSDR_GAIN` (tenths dB, default
+  `-1` = tuner max), bias-tee `ADSB_RTLSDR_BIAS_TEE` (default off; Blog V4
+  EEPROM may force on). No adaptive gain.
+- CRC-valid DF17/18 frames are re-encoded `*<hex>;` and fed through their
+  own `AdsbFramer` into the shared ring buffer → same aircraft table,
+  `ADSB/{icao}` publish and `ihex` as the module.
+- Takeover: first USB source attached (FTDI or RTL-SDR) wins; UART resumes
+  when it detaches. Session ends on `DEV_GONE` or 10 consecutive read
+  errors (then needs replug).
+- `{hostname}/status`: `adsb_source` gains `rtlsdr`, plus
+  `adsb_rtlsdr_frames`. Web UI shows model/tuner, rate, gain, bias-tee,
+  I/Q bytes, read errors, frames.
+
 ### Mode-S decode
 
 - `lib/libmodes/` — vendored [Displacer/libmodes](https://github.com/Displacer/libmodes)
@@ -186,6 +219,10 @@ the physical module or over MQTT on device.**
 USB dongle verified on hardware (Waveshare P4, FT232H dongle): enumerates
 at boot, configured, valid DF17 frames framed into the decoder. Unplug →
 UART fallback and re-plug not yet exercised on hardware.
+
+RTL-SDR ingest: flashed on Waveshare P4, boots clean (both USB host
+clients registered, PSRAM buffers allocated, no crash over 3 min).
+**Dongle attach/demod not yet tested on hardware.**
 
 ## Deferred / not implemented
 
