@@ -291,7 +291,7 @@ sensorpod/
 │   ├── bthome_rx.cpp/.hpp  # BTHome v2 receive: bthome-cpp decode, decrypt, JSON
 │   ├── custom_decoder.cpp  # hand-written decoders (Mikrotik TG-BT5, Qingping)
 │   ├── adsb.cpp/.hpp       # ADS-B receiver: UART ingest, Mode-S decode, ADSB/{icao} + ihex publish
-│   ├── adsb_usb.cpp/.hpp   # USB-host FTDI dongle ingest (P4)
+│   ├── adsb_usb.cpp/.hpp   # USB-host FTDI / CP210x / CDC-ACM ingest (P4)
 │   ├── adsb_rtlsdr.cpp/.hpp # USB-host RTL-SDR ingest + on-chip Mode-S demod (P4)
 │   ├── deviceconfig.hpp    # NVS wrapper for role, broker hostname, topic prefix, BLE, ADS-B options
 │   ├── mdns_state.hpp      # mDNS service struct + externs

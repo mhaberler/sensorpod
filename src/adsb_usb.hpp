@@ -3,8 +3,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// USB-host ingest for the FTDI-based ADS-B dongle (ESP32-P4 OTG). While an
-// FTDI device is attached it takes over as frame source from the UART.
+// USB-host ingest for an ADS-B "*<hex>;" line source (ESP32-P4 OTG): FTDI
+// dongle, CP210x bridge or any CDC-ACM device (e.g. an ESP32-C6 over
+// USB-Serial/JTAG). While attached it takes over as frame source from the UART.
 
 void adsb_usb_setup();
 
@@ -13,11 +14,11 @@ struct AdsbUsbInfo {
   bool connected;
   uint8_t addr, hub_port;
   uint16_t vid, pid, bcd;
-  const char *chip;
+  const char *chip; // FTDI chip name, "CP210x" or "CDC-ACM"
   const char *speed;
   uint8_t ep_in;
   uint16_t mps;
-  int baud; // actual, after divisor rounding
+  int baud; // FTDI: actual; CP210x: requested; CDC-ACM: 0
   uint32_t attached_ms;
   char manufacturer[32], product[32], serial[32];
   uint32_t bytes; // payload bytes received, all sessions

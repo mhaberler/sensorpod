@@ -9,17 +9,28 @@
 #include <string.h>
 #include <usb/usb_host.h>
 
-// Minimal FTDI (FT232R/FT-X/FT232H/FT2232H/FT4232H) USB-serial driver on the
-// ESP-IDF USB Host Library, enough to receive the ADS-B dongle's 921600 8N1
-// stream. Works through hubs (CONFIG_USB_HOST_HUBS_SUPPORTED). Only the
-// first FTDI device attached is used; its port A interface is configured
-// and its bulk IN endpoint streamed into adsb_feed_usb().
+// Minimal USB-serial receive drivers on the ESP-IDF USB Host Library, enough
+// to stream an ADS-B "*<hex>;" line source into adsb_feed_usb(). Works
+// through hubs (CONFIG_USB_HOST_HUBS_SUPPORTED). Only the first matching
+// device attached is used:
 //
-// FTDI bulk IN packets carry 2 modem/line status bytes at the start of
-// every max-packet-size chunk; those are stripped before feeding.
+// - FTDI (FT232R/FT-X/FT232H/FT2232H/FT4232H, VID 0x0403): port A interface
+//   configured for 921600 8N1. FTDI bulk IN packets carry 2 modem/line
+//   status bytes at the start of every max-packet-size chunk; those are
+//   stripped before feeding.
+// - Silicon Labs CP210x (VID 0x10c4, e.g. CP2102/CP2104 0xea60): interface
+//   0 enabled and set to 921600 8N1 via vendor requests; bulk IN carries
+//   plain data. DTR/RTS (SET_MHS) left alone: ESP32 dev boards wire them
+//   to the auto-reset circuit.
+// - CDC-ACM (any device with a CDC data interface, class 0x0A, that has a
+//   bulk IN endpoint, e.g. an ESP32-C6/C3/S3 USB-Serial/JTAG or TinyUSB
+//   CDC): data interface claimed and streamed as-is. No line coding and no
+//   SET_CONTROL_LINE_STATE - on Espressif USB-Serial/JTAG, DTR/RTS changes
+//   are the auto-reset/download sequence and would reset the sender.
 
 #define ADSB_USB_BAUD 921600
 #define FTDI_VID 0x0403
+#define CP210X_VID 0x10c4
 #define FTDI_LATENCY_MS 2
 #define BULK_XFER_SIZE 512 // multiple of both FS (64) and HS (512) MPS
 #define BULK_XFER_COUNT 4
@@ -33,6 +44,12 @@
 #define SIO_SET_DATA 0x04
 #define SIO_SET_LATENCY_TIMER 0x09
 
+// CP210x vendor requests (AN571), interface recipient
+#define CP210X_IFC_ENABLE 0x00
+#define CP210X_SET_LINE_CTL 0x03
+#define CP210X_PURGE 0x12
+#define CP210X_SET_BAUDRATE 0x1e
+
 #define SIO_RESET_SIO 0
 #define SIO_RESET_PURGE_RX 1
 #define SIO_RESET_PURGE_TX 2
@@ -45,6 +62,8 @@ static QueueHandle_t new_dev_queue;
 static struct {
   usb_device_handle_t hdl;
   uint8_t addr;
+  enum { FTDI, CP210X, CDC } kind;
+  uint8_t intf; // claimed interface
   uint8_t ep_in;
   uint16_t mps;
   usb_transfer_t *ctrl;
@@ -157,18 +176,23 @@ static void ctrl_cb(usb_transfer_t *xfer) {
   *(volatile bool *)xfer->context = true;
 }
 
-// Synchronous vendor OUT request; pumps client events until completion.
-// Only call from the client task, outside event callbacks.
-static esp_err_t ftdi_ctrl(uint8_t req, uint16_t value, uint16_t index) {
+// Synchronous OUT control request with optional data stage (<= 64 bytes);
+// pumps client events until completion. Only call from the client task,
+// outside event callbacks.
+static esp_err_t ctrl_out(uint8_t type, uint8_t req, uint16_t value,
+                          uint16_t index, const void *data = nullptr,
+                          uint16_t len = 0) {
   volatile bool done = false;
   usb_transfer_t *x = dev.ctrl;
   usb_setup_packet_t *s = (usb_setup_packet_t *)x->data_buffer;
-  s->bmRequestType = 0x40; // vendor, host-to-device, device recipient
+  s->bmRequestType = type;
   s->bRequest = req;
   s->wValue = value;
   s->wIndex = index;
-  s->wLength = 0;
-  x->num_bytes = sizeof(usb_setup_packet_t);
+  s->wLength = len;
+  if (len)
+    memcpy(x->data_buffer + sizeof(usb_setup_packet_t), data, len);
+  x->num_bytes = sizeof(usb_setup_packet_t) + len;
   x->device_handle = dev.hdl;
   x->bEndpointAddress = 0;
   x->callback = ctrl_cb;
@@ -187,21 +211,31 @@ static esp_err_t ftdi_ctrl(uint8_t req, uint16_t value, uint16_t index) {
   return x->status == USB_TRANSFER_STATUS_COMPLETED ? ESP_OK : ESP_FAIL;
 }
 
+// Vendor, host-to-device, device recipient.
+static esp_err_t ftdi_ctrl(uint8_t req, uint16_t value, uint16_t index) {
+  return ctrl_out(0x40, req, value, index);
+}
+
 static void bulk_cb(usb_transfer_t *x) {
   if (x->status == USB_TRANSFER_STATUS_COMPLETED) {
     int n = x->actual_num_bytes;
     if (!dev.raw_logged && n > 2) {
       dev.raw_logged = true;
-      log_w("ADS-B[usb] first raw chunk (%d bytes, incl. status):", n);
+      log_w("ADS-B[usb] first raw chunk (%d bytes%s):", n,
+            dev.kind == dev.FTDI ? ", incl. status" : "");
       log_buf_w(x->data_buffer, n < 32 ? n : 32);
     }
-    for (int off = 0; off < n; off += dev.mps) {
-      int chunk = n - off < dev.mps ? n - off : dev.mps;
-      if (chunk > 2) {
-        adsb_feed_usb(x->data_buffer + off + 2, chunk - 2);
-        usb_bytes += chunk - 2;
+    if (dev.kind != dev.FTDI) {
+      adsb_feed_usb(x->data_buffer, n);
+      usb_bytes += n;
+    } else
+      for (int off = 0; off < n; off += dev.mps) {
+        int chunk = n - off < dev.mps ? n - off : dev.mps;
+        if (chunk > 2) {
+          adsb_feed_usb(x->data_buffer + off + 2, chunk - 2);
+          usb_bytes += chunk - 2;
+        }
       }
-    }
     if (!dev.gone && usb_host_transfer_submit(x) == ESP_OK)
       return;
   } else if (!dev.gone && x->status != USB_TRANSFER_STATUS_NO_DEVICE &&
@@ -234,7 +268,7 @@ static void ftdi_teardown(const char *why) {
   if (dev.ctrl)
     usb_host_transfer_free(dev.ctrl);
   if (dev.ep_in)
-    usb_host_interface_release(client, dev.hdl, 0);
+    usb_host_interface_release(client, dev.hdl, dev.intf);
   usb_host_device_close(client, dev.hdl);
 
   if (dev.attached_ms) {
@@ -277,6 +311,32 @@ static bool ftdi_configure(uint16_t bcd, int *actual_baud) {
   return true;
 }
 
+// CP210x: enable the UART, ADSB_USB_BAUD 8N1, purge. DTR/RTS untouched.
+static bool cp210x_configure(uint8_t intf) {
+  const uint8_t type = 0x41;     // vendor, host-to-device, interface recipient
+  uint32_t baud = ADSB_USB_BAUD; // little-endian on the wire, as is the P4
+  struct {
+    const char *name;
+    uint8_t req;
+    uint16_t value;
+    const void *data;
+    uint16_t len;
+  } seq[] = {
+      {"IFC_ENABLE", CP210X_IFC_ENABLE, 1, nullptr, 0},
+      {"SET_BAUDRATE", CP210X_SET_BAUDRATE, 0, &baud, sizeof(baud)},
+      {"SET_LINE_CTL 8N1", CP210X_SET_LINE_CTL, 0x0800, nullptr, 0},
+      {"PURGE", CP210X_PURGE, 0x000f, nullptr, 0},
+  };
+  for (auto &s : seq) {
+    esp_err_t err = ctrl_out(type, s.req, s.value, intf, s.data, s.len);
+    if (err != ESP_OK) {
+      log_e("ADS-B USB: CP210x %s failed: %s", s.name, esp_err_to_name(err));
+      return false;
+    }
+  }
+  return true;
+}
+
 static void device_new(uint8_t addr) {
   usb_device_handle_t hdl;
   if (usb_host_device_open(client, addr, &hdl) != ESP_OK) {
@@ -288,56 +348,79 @@ static void device_new(uint8_t addr) {
   usb_host_get_device_descriptor(hdl, &dd);
   usb_host_device_info(hdl, &info);
 
-  if (dd->idVendor != FTDI_VID || dev.hdl) {
+  const usb_config_desc_t *cfg;
+  usb_host_get_active_config_descriptor(hdl, &cfg);
+
+  // FTDI: interface 0. Otherwise the first CDC data interface with a bulk
+  // IN endpoint.
+  bool ftdi = dd->idVendor == FTDI_VID;
+  bool cp210x = dd->idVendor == CP210X_VID;
+  int intf_num = -1;
+  uint8_t ep_in = 0;
+  uint16_t mps = 0;
+  for (int n = 0; n < cfg->bNumInterfaces && intf_num < 0; n++) {
+    int off = 0;
+    const usb_intf_desc_t *intf =
+        usb_parse_interface_descriptor(cfg, n, 0, &off);
+    if (!intf ||
+        ((ftdi || cp210x) ? n != 0
+                          : intf->bInterfaceClass != USB_CLASS_CDC_DATA))
+      continue;
+    for (int i = 0; i < intf->bNumEndpoints; i++) {
+      int eoff = off;
+      const usb_ep_desc_t *ep = usb_parse_endpoint_descriptor_by_index(
+          intf, i, cfg->wTotalLength, &eoff);
+      if (ep && (ep->bEndpointAddress & 0x80) &&
+          (ep->bmAttributes & 0x03) == USB_BM_ATTRIBUTES_XFER_BULK) {
+        intf_num = n;
+        ep_in = ep->bEndpointAddress;
+        mps = ep->wMaxPacketSize & 0x7ff;
+        break;
+      }
+    }
+  }
+
+  if (intf_num < 0 || !mps || dev.hdl) {
     log_w("USB device addr %u %04x:%04x (class 0x%02x) ignored%s", addr,
           dd->idVendor, dd->idProduct, dd->bDeviceClass,
-          dev.hdl ? " (ADS-B dongle already active)" : "");
+          dev.hdl  ? " (ADS-B dongle already active)"
+          : ftdi   ? " (FTDI without bulk IN on interface 0)"
+          : cp210x ? " (CP210x without bulk IN on interface 0)"
+                   : " (no FTDI/CP210x/CDC-ACM data interface)");
     usb_host_device_close(client, hdl);
     return;
   }
 
   dev.hdl = hdl;
   dev.addr = addr;
+  dev.kind = ftdi ? dev.FTDI : cp210x ? dev.CP210X : dev.CDC;
+  dev.intf = intf_num;
   uint16_t bcd = dd->bcdDevice;
 
-  const usb_config_desc_t *cfg;
-  usb_host_get_active_config_descriptor(hdl, &cfg);
-  int off = 0;
-  const usb_intf_desc_t *intf = usb_parse_interface_descriptor(cfg, 0, 0, &off);
-  for (int i = 0; intf && i < intf->bNumEndpoints; i++) {
-    int eoff = off;
-    const usb_ep_desc_t *ep = usb_parse_endpoint_descriptor_by_index(
-        intf, i, cfg->wTotalLength, &eoff);
-    if (ep && (ep->bEndpointAddress & 0x80) &&
-        (ep->bmAttributes & 0x03) == USB_BM_ATTRIBUTES_XFER_BULK) {
-      dev.ep_in = ep->bEndpointAddress;
-      dev.mps = ep->wMaxPacketSize & 0x7ff;
-      break;
-    }
-  }
-  if (!dev.ep_in || !dev.mps) {
-    log_e("ADS-B USB: FTDI %04x:%04x has no bulk IN on interface 0",
-          dd->idVendor, dd->idProduct);
-    ftdi_teardown("no bulk IN");
+  if (usb_host_interface_claim(client, hdl, intf_num, 0) != ESP_OK) {
+    log_e("ADS-B USB: claim interface %d failed", intf_num);
+    ftdi_teardown("claim failed"); // ep_in still 0: nothing to release
     return;
   }
-  if (usb_host_interface_claim(client, hdl, 0, 0) != ESP_OK) {
-    log_e("ADS-B USB: claim interface 0 failed");
-    dev.ep_in = 0; // nothing to release
-    ftdi_teardown("claim failed");
-    return;
-  }
-  if (usb_host_transfer_alloc(sizeof(usb_setup_packet_t) + 64, 0, &dev.ctrl) !=
-      ESP_OK) {
-    log_e("ADS-B USB: control transfer alloc failed");
-    ftdi_teardown("alloc failed");
-    return;
-  }
+  dev.ep_in = ep_in;
+  dev.mps = mps;
 
   int actual_baud = 0;
-  if (!ftdi_configure(bcd, &actual_baud)) {
-    ftdi_teardown("config failed");
-    return;
+  if (ftdi || cp210x) {
+    if (usb_host_transfer_alloc(sizeof(usb_setup_packet_t) + 64, 0,
+                                &dev.ctrl) != ESP_OK) {
+      log_e("ADS-B USB: control transfer alloc failed");
+      ftdi_teardown("alloc failed");
+      return;
+    }
+    bool ok =
+        ftdi ? ftdi_configure(bcd, &actual_baud) : cp210x_configure(intf_num);
+    if (!ok) {
+      ftdi_teardown("config failed");
+      return;
+    }
+    if (cp210x)
+      actual_baud = ADSB_USB_BAUD; // device rounds internally, not reported
   }
 
   for (auto &b : dev.bulk) {
@@ -369,7 +452,9 @@ static void device_new(uint8_t addr) {
   i.vid = dd->idVendor;
   i.pid = dd->idProduct;
   i.bcd = bcd;
-  i.chip = chip_name(bcd);
+  i.chip = dev.kind == dev.CDC      ? "CDC-ACM"
+           : dev.kind == dev.CP210X ? "CP210x"
+                                    : chip_name(bcd);
   i.speed = info.speed == USB_SPEED_HIGH   ? "high"
             : info.speed == USB_SPEED_FULL ? "full"
                                            : "low";
@@ -385,10 +470,10 @@ static void device_new(uint8_t addr) {
   usb_info = i;
 
   log_w("ADS-B USB: dongle connected addr %u (parent hub port %u), "
-        "%04x:%04x %s bcd=0x%04x, %s speed, EP 0x%02x MPS %u, baud %d "
+        "%04x:%04x %s bcd=0x%04x intf %u, %s speed, EP 0x%02x MPS %u, baud %d "
         "(requested %d), latency %d ms; UART input suspended",
-        addr, info.parent.port_num, dd->idVendor, dd->idProduct, chip_name(bcd),
-        bcd,
+        addr, info.parent.port_num, dd->idVendor, dd->idProduct, i.chip, bcd,
+        dev.intf,
         info.speed == USB_SPEED_HIGH   ? "high"
         : info.speed == USB_SPEED_FULL ? "full"
                                        : "low",

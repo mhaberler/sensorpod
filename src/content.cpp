@@ -281,8 +281,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
               u.product[0] ? u.product : "-", u.serial[0] ? u.serial : "-");
       appendf(out,
               "<tr><td>USB link</td><td>addr %u, hub port %u, EP 0x%02x MPS "
-              "%u, %d baud</td></tr>",
-              u.addr, u.hub_port, u.ep_in, u.mps, u.baud);
+              "%u",
+              u.addr, u.hub_port, u.ep_in, u.mps);
+      if (u.baud)
+        appendf(out, ", %d baud", u.baud);
+      out += "</td></tr>";
       appendf(out, "<tr><td>USB connected for</td><td>%lus</td></tr>",
               (unsigned long)((now - u.attached_ms) / 1000));
     }

@@ -82,7 +82,8 @@ Multi-file Arduino sketch. Current sources:
   and optionally raw `*<hex>;` lines on `ihex`. Both toggled live by NVS
   flags `adsb_pub` (default on) / `adsb_ihex` (default off) via
   `/api/set-adsb` + web UI checkboxes. Details: `ADSB.md`.
-- `src/adsb_usb.cpp` — (`-DADSB_USB`, P4) USB-host minimal FTDI driver; an
+- `src/adsb_usb.cpp` — (`-DADSB_USB`, P4) USB-host minimal FTDI / CP210x /
+  CDC-ACM receive driver (DTR/RTS untouched for CP210x/CDC); an
   attached FTDI ADS-B dongle (also via hub) takes over from the UART source
   in `adsb.cpp` until unplugged. `adsb_usb_info()` exposes dongle
   properties + traffic for the web UI ADS-B section.

@@ -57,6 +57,23 @@ Dongle variant of the same receiver: module behind an FTDI FT232H
 stream (lines end in `\r\n`, ignored by the framer). Enabled in
 `esp32p4_waveshare_devkit_adsb`; UART stays compiled in as fallback.
 
+Three USB-serial flavours are accepted (first matching device wins; all
+feed the same framer and takeover path):
+
+| Kind | Match | Setup | Bulk IN |
+|---|---|---|---|
+| FTDI | VID `0403`, interface 0 | reset, 921600 8N1, latency 2 ms, DTR/RTS, purge | 2 status bytes per MPS chunk stripped |
+| CP210x | VID `10c4` (e.g. CP2102/4 `ea60`), interface 0 | `IFC_ENABLE`, `SET_BAUDRATE` 921600, `SET_LINE_CTL` 8N1, `PURGE` (vendor, interface recipient) | plain data |
+| CDC-ACM | any device with a CDC data interface (class `0x0A`) + bulk IN, e.g. ESP32-C6 USB-Serial/JTAG `303a:1001` | none (no line coding) | plain data |
+
+- DTR/RTS are deliberately **not** touched for CP210x and CDC-ACM: on
+  ESP32 boards (CP210x auto-reset circuit) and on Espressif USB-Serial/JTAG
+  they are the reset/download-mode sequence and would reset the sender.
+- Web UI shows chip `FTDI…`/`CP210x`/`CDC-ACM`; baud only where set.
+- Status: CP210x (`10c4:ea60`) enumerates and configures on the Tab5, but
+  no data was seen yet (sender/baud unconfirmed). CDC-ACM builds but is
+  untested on hardware.
+
 - P4 USB host on the HS OTG port (`peripheral_map = 0` = default HS),
   ESP-IDF USB Host Library from the prebuilt Arduino libs (hubs supported,
   no lib rebuild). `enum_filter_cb` is mandatory: Arduino ≥3.3.11 builds
