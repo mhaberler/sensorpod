@@ -7,6 +7,7 @@
 #include "cpr.h"
 #include "deviceconfig.hpp"
 #include "mqtt.hpp"
+#include "mqtt_client.hpp"
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
 #include <freertos/FreeRTOS.h>
@@ -60,6 +61,25 @@ static volatile bool adsb_signal_reset_pending = false;
 
 static mode_s_t mode_s_ctx;
 
+// Last raw frame per message class, replayed on ihex to new subscribers so an
+// ihex-only decoder can rebuild the table (ident, CPR pair, velocity, ...).
+enum RawClass : uint8_t {
+  RF_IDENT,    // TC1-4, replayed while the aircraft lives
+  RF_POS_EVEN, // TC9-18, replayed if <= ADSB_CPR_PAIR_MAX_MS old
+  RF_POS_ODD,
+  RF_VEL,      // TC19, replayed if <= ADSB_AIRCRAFT_TTL_MS old
+  RF_OPSTATUS, // TC31 st0, replayed while the aircraft lives
+  RF_EMERG,    // TC28 st1, replayed if <= ADSB_AIRCRAFT_TTL_MS old
+  RF_COUNT
+};
+
+struct RawFrame {
+  uint8_t len = 0; // bytes; 0 = empty
+  uint8_t msg[14];
+  float signal; // < 0 = unknown
+  uint32_t ms;
+};
+
 struct Aircraft {
   bool used = false;
   uint32_t icao = 0;
@@ -104,6 +124,8 @@ struct Aircraft {
   uint32_t last_seen_ms = 0;
   uint32_t last_published_ms = 0;
   uint32_t messages_at_last_publish = 0;
+
+  RawFrame raw[RF_COUNT];
 };
 
 static Aircraft aircraft_table[ADSB_MAX_AIRCRAFT];
@@ -281,6 +303,8 @@ void adsb_feed_rtlsdr(const char *hex, size_t len, float signal) {
 }
 #endif
 
+static void adsb_sweep_retained();
+
 void adsb_setup() {
   adsb_publish_enabled = DeviceConfig::isAdsbPublishEnabled();
   adsb_ihex_enabled = DeviceConfig::isAdsbIhexEnabled();
@@ -309,6 +333,7 @@ void adsb_setup() {
 #ifdef ADSB_RTLSDR
   adsb_rtlsdr_setup();
 #endif
+  mqtt_client.on_connect_hook = adsb_sweep_retained; // fires in client mode
 }
 
 static int hex_nibble(char c) {
@@ -336,20 +361,33 @@ static size_t hex_to_bin(const char *hex, size_t hexlen, unsigned char *out,
   return n;
 }
 
-static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
-  if (adsb_ihex_enabled) {
-    char line[ADSB_MAX_LINE + 5];
-    if (adsb_ihex_signal && signal >= 0) {
-      // GNS5892R mode 3+ layout, SS = Beast signal byte (readsb):
-      // round(sqrt(signal) * 255), i.e. dBFS = 20 * log10(SS / 255).
-      long ss = lroundf(sqrtf(signal) * 255);
-      snprintf(line, sizeof(line), "+%02X%.*s;",
-               (unsigned)(ss > 255 ? 255 : ss), (int)hexlen, hex);
-    } else {
-      snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
-    }
-    mqtt_publish("ihex", line);
+// One frame on ihex, "*<hex>;" or with signal "+SS<hex>;".
+static void adsb_ihex_publish(const char *hex, size_t hexlen, float signal) {
+  char line[ADSB_MAX_LINE + 5];
+  if (adsb_ihex_signal && signal >= 0) {
+    // GNS5892R mode 3+ layout, SS = Beast signal byte (readsb):
+    // round(sqrt(signal) * 255), i.e. dBFS = 20 * log10(SS / 255).
+    long ss = lroundf(sqrtf(signal) * 255);
+    snprintf(line, sizeof(line), "+%02X%.*s;", (unsigned)(ss > 255 ? 255 : ss),
+             (int)hexlen, hex);
+  } else {
+    snprintf(line, sizeof(line), "*%.*s;", (int)hexlen, hex);
   }
+  mqtt_publish("ihex", line);
+}
+
+static void raw_store(Aircraft *ac, RawClass c, const unsigned char *msg,
+                      size_t n, float signal, uint32_t now) {
+  RawFrame &f = ac->raw[c];
+  f.len = n;
+  memcpy(f.msg, msg, n);
+  f.signal = signal;
+  f.ms = now;
+}
+
+static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
+  if (adsb_ihex_enabled)
+    adsb_ihex_publish(hex, hexlen, signal);
 
   unsigned char msg[14] = {0};
   size_t nbytes = hex_to_bin(hex, hexlen, msg, sizeof(msg));
@@ -387,6 +425,7 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
   }
 
   if (mm.metype >= 1 && mm.metype <= 4) {
+    raw_store(ac, RF_IDENT, msg, nbytes, signal, now);
     strncpy(ac->flight, mm.flight, sizeof(ac->flight) - 1);
     ac->category = mm.aircraft_type;
     ac->has_flight = true;
@@ -395,6 +434,8 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
     ac->alt_baro = mm.altitude;
     ac->has_alt_baro = true;
 
+    raw_store(ac, mm.fflag ? RF_POS_ODD : RF_POS_EVEN, msg, nbytes, signal,
+              now);
     if (mm.fflag) {
       ac->odd_lat = mm.raw_latitude;
       ac->odd_lon = mm.raw_longitude;
@@ -420,6 +461,7 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
       }
     }
   } else if (mm.metype == 19 && mm.mesub >= 1 && mm.mesub <= 4) {
+    raw_store(ac, RF_VEL, msg, nbytes, signal, now);
     ac->baro_rate = mm.vert_rate_sign ? -mm.vert_rate : mm.vert_rate;
     ac->has_baro_rate = true;
     if (mm.mesub == 1 || mm.mesub == 2) {
@@ -435,6 +477,7 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
       ac->has_alt_geom = true;
     }
   } else if (mm.metype == 31 && mm.mesub == 0 && mm.opstatus_valid) {
+    raw_store(ac, RF_OPSTATUS, msg, nbytes, signal, now);
     ac->has_opstatus = true;
     ac->nav_version = mm.opstatus_version;
     if (mm.nac_p_valid)
@@ -448,6 +491,7 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
       ac->sil_type = mm.sil_type;
     }
   } else if (mm.metype == 28 && mm.mesub == 1) {
+    raw_store(ac, RF_EMERG, msg, nbytes, signal, now);
     if (mm.es_emergency_valid)
       ac->emergency = mm.es_emergency;
     if (mm.es_squawk_valid)
@@ -530,7 +574,7 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
   serializeJson(doc, payload);
   char topic[16];
   snprintf(topic, sizeof(topic), "ADSB/%s", hex);
-  mqtt_publish(topic, payload.c_str());
+  mqtt_publish(topic, payload.c_str(), true); // retained in client mode
 
   ac.last_published_ms = now;
   ac.messages_at_last_publish = ac.messages;
@@ -541,7 +585,7 @@ static void adsb_publish_tombstone(Aircraft &ac) {
   icao_to_hex(ac.icao, hex);
   char topic[16];
   snprintf(topic, sizeof(topic), "ADSB/%s", hex);
-  mqtt_publish(topic, "");
+  mqtt_publish(topic, "", true); // empty retained payload deletes
 }
 
 static void adsb_table_loop() {
@@ -568,6 +612,113 @@ static void adsb_table_loop() {
 
 void adsb_signal_reset() { adsb_signal_reset_pending = true; }
 
+// ---------------------------------------------------------------------------
+// Table dump on subscribe (broker mode). PicoMQTT can only publish to every
+// matching subscriber, so existing subscribers get duplicates (idempotent
+// state). Subscribes within ADSB_DUMP_DELAY_MS are coalesced.
+
+#define ADSB_DUMP_DELAY_MS 1000
+#define ADSB_DUMP_BUDGET 10 // publishes per adsb_loop() pass
+
+static bool dump_aircraft_pending, dump_ihex_pending;
+static uint32_t dump_due_ms;
+static bool dump_active, dump_aircraft, dump_ihex;
+static int dump_idx, dump_sub; // table index; 0 = JSON, 1.. = raw class + 1
+
+// Topic as published by mqtt_publish(), i.e. with the optional prefix.
+static String adsb_topic(const char *topic) {
+  extern String hostName;
+  extern volatile bool topic_prefix_enabled;
+  return topic_prefix_enabled ? hostName + "/" + topic : String(topic);
+}
+
+void adsb_on_subscribe(const char *filter) {
+  bool ac = PicoMQTT::Subscriber::topic_matches(
+      filter, adsb_topic("ADSB/000000").c_str());
+  bool ih =
+      PicoMQTT::Subscriber::topic_matches(filter, adsb_topic("ihex").c_str());
+  if (!ac && !ih)
+    return;
+  if (!dump_aircraft_pending && !dump_ihex_pending)
+    dump_due_ms = millis() + ADSB_DUMP_DELAY_MS;
+  dump_aircraft_pending |= ac;
+  dump_ihex_pending |= ih;
+}
+
+static bool raw_fresh(const RawFrame &f, int c, uint32_t now) {
+  if (!f.len)
+    return false;
+  switch (c) {
+  case RF_POS_EVEN:
+  case RF_POS_ODD:
+    return now - f.ms <= ADSB_CPR_PAIR_MAX_MS;
+  case RF_VEL:
+  case RF_EMERG:
+    return now - f.ms <= ADSB_AIRCRAFT_TTL_MS;
+  default: // ident, op-status: while the aircraft lives
+    return true;
+  }
+}
+
+static void adsb_dump_step(uint32_t now) {
+  if (!dump_active) {
+    if ((!dump_aircraft_pending && !dump_ihex_pending) ||
+        (int32_t)(now - dump_due_ms) < 0)
+      return;
+    dump_active = true;
+    dump_aircraft = dump_aircraft_pending;
+    dump_ihex = dump_ihex_pending;
+    dump_aircraft_pending = dump_ihex_pending = false;
+    dump_idx = dump_sub = 0;
+  }
+  int budget = ADSB_DUMP_BUDGET;
+  while (budget > 0 && dump_idx < ADSB_MAX_AIRCRAFT) {
+    Aircraft &ac = aircraft_table[dump_idx];
+    if (!ac.used || dump_sub > RF_COUNT) {
+      dump_idx++;
+      dump_sub = 0;
+      continue;
+    }
+    int sub = dump_sub++;
+    if (sub == 0) {
+      if (dump_aircraft && adsb_publish_enabled) {
+        adsb_publish_aircraft(ac, now);
+        budget--;
+      }
+    } else if (dump_ihex && adsb_ihex_enabled &&
+               raw_fresh(ac.raw[sub - 1], sub - 1, now)) {
+      static const char hexd[] = "0123456789ABCDEF";
+      const RawFrame &f = ac.raw[sub - 1];
+      char hex[2 * sizeof(f.msg)];
+      for (int k = 0; k < f.len; k++) {
+        hex[2 * k] = hexd[f.msg[k] >> 4];
+        hex[2 * k + 1] = hexd[f.msg[k] & 0xf];
+      }
+      adsb_ihex_publish(hex, 2 * f.len, f.signal);
+      budget--;
+    }
+  }
+  if (dump_idx >= ADSB_MAX_AIRCRAFT) {
+    dump_active = false;
+    log_i("ADS-B: table dump done (aircraft=%d ihex=%d)", dump_aircraft,
+          dump_ihex);
+  }
+}
+
+// Client mode: after (re)connect, clear retained ADSB/{icao} left on the
+// remote broker by a previous boot for aircraft no longer in the table.
+static void adsb_sweep_retained() {
+  String filter = adsb_topic("ADSB/+");
+  mqtt_client.sweep_retained(filter.c_str(), [](const char *topic) {
+    const char *slash = strrchr(topic, '/');
+    uint32_t icao = strtoul(slash ? slash + 1 : topic, nullptr, 16);
+    for (auto &ac : aircraft_table)
+      if (ac.used && ac.icao == icao)
+        return true;
+    return false;
+  });
+}
+
 void adsb_loop() {
   if (adsb_signal_reset_pending) {
     adsb_signal_reset_pending = false;
@@ -585,6 +736,7 @@ void adsb_loop() {
 
   static uint32_t last_table_tick = 0;
   uint32_t now = millis();
+  adsb_dump_step(now);
   if (now - last_table_tick >= 250) {
     last_table_tick = now;
     adsb_table_loop();

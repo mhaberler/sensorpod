@@ -17,6 +17,8 @@ void MQTTClient::begin() {
     retry_count = 0;
     retry_backoff_ms = 1000;
     log_i("MQTT connected (reconnects=%u)", total_reconnects);
+    if (on_connect_hook)
+      on_connect_hook();
   };
   mqtt.disconnected_callback = [this]() {
     connected_since_ms = 0;
@@ -46,13 +48,52 @@ void MQTTClient::loop() {
   }
 
   mqtt.loop();
+
+  if (sweep_start_ms && millis() - sweep_start_ms >= SWEEP_MS)
+    sweep_finish();
+}
+
+void MQTTClient::sweep_retained(const char *filter,
+                                std::function<bool(const char *)> keep) {
+  if (sweep_start_ms)
+    sweep_finish();
+  sweep_filter = filter;
+  sweep_keep = keep;
+  sweep_topics.clear();
+  sweep_start_ms = millis();
+  if (!sweep_start_ms)
+    sweep_start_ms = 1;
+  // Retained messages arrive right after SUBACK; live publishes (ours
+  // included) may arrive too and are kept by keep() anyway.
+  mqtt.subscribe(sweep_filter, [this](char *topic, char *payload) {
+    if (payload[0] && sweep_topics.size() < 256) {
+      for (auto &t : sweep_topics)
+        if (t == topic)
+          return;
+      sweep_topics.push_back(topic);
+    }
+  });
+}
+
+void MQTTClient::sweep_finish() {
+  mqtt.unsubscribe(sweep_filter);
+  unsigned cleared = 0;
+  for (auto &t : sweep_topics)
+    if (!sweep_keep(t.c_str())) {
+      publish(t.c_str(), "", true);
+      cleared++;
+    }
+  log_i("MQTT sweep %s: %u retained, %u cleared", sweep_filter.c_str(),
+        (unsigned)sweep_topics.size(), cleared);
+  sweep_topics.clear();
+  sweep_start_ms = 0;
 }
 
 bool MQTTClient::connected() { return mqtt.connected(); }
 
-void MQTTClient::publish(const char *topic, const char *payload) {
+void MQTTClient::publish(const char *topic, const char *payload, bool retain) {
   if (mqtt.connected()) {
-    mqtt.publish(topic, payload);
+    mqtt.publish(topic, payload, 0, retain);
     messages_sent++;
     log_d("MQTTClient::publish(%s)", topic);
   } else {

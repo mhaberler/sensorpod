@@ -17,7 +17,8 @@ public:
 
   bool connected() override { return client_count > 0; }
 
-  void publish(const char *topic, const char *payload) override {
+  void publish(const char *topic, const char *payload,
+               bool retain = false) override {
     PicoMQTT::Server::publish(topic, payload);
   }
 
@@ -35,6 +36,10 @@ protected:
   virtual void on_subscribe(const char *client_id, const char *topic) override {
     subscribed++;
     log_w("client %s subscribed %s (subs=%d)", client_id, topic, subscribed);
+#ifdef ADSB_UART
+    extern void adsb_on_subscribe(const char *filter);
+    adsb_on_subscribe(topic);
+#endif
   }
   virtual void on_unsubscribe(const char *client_id,
                               const char *topic) override {
@@ -52,15 +57,16 @@ protected:
 extern CustomMQTTServer mqtt_broker;
 extern MQTTDevice *mqtt_device;
 
-inline void mqtt_publish(const char *topic, const char *payload) {
+inline void mqtt_publish(const char *topic, const char *payload,
+                         bool retain = false) {
   extern String hostName;
   extern volatile bool topic_prefix_enabled;
   if (!mqtt_device)
     return;
   if (!topic_prefix_enabled) {
-    mqtt_device->publish(topic, payload);
+    mqtt_device->publish(topic, payload, retain);
     return;
   }
   String prefixed = String(hostName) + "/" + topic;
-  mqtt_device->publish(prefixed.c_str(), payload);
+  mqtt_device->publish(prefixed.c_str(), payload, retain);
 }

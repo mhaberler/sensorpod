@@ -117,7 +117,11 @@ static String resolve_broker_host(const String &host) {
   return host;
 }
 
+// Random per boot: lets consumers tell a reboot apart without a wall clock.
+static char boot_id[9];
+
 void setup() {
+  snprintf(boot_id, sizeof(boot_id), "%08lx", (unsigned long)esp_random());
 #if defined(HAS_M5UNIFIED)
   auto cfg = M5.config();
   cfg.output_power = true;
@@ -240,6 +244,7 @@ void loop() {
     lastStatusPublish = now;
     JsonDocument doc;
     doc["uptime"] = now / 1000;
+    doc["boot"] = boot_id;
     doc["cpu_temperature"] = temperatureRead();
     doc["rssi"] = WiFi.RSSI();
     if (numClicks) {

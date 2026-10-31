@@ -93,7 +93,12 @@ Multi-file Arduino sketch. Current sources:
   aircraft; noise floor / strong signals / clipped samples in status.
   Web UI: live gain (NVS `rtl_gain`), dBm calibration K (`rtl_cal_k`,
   `dBm = dBFS − gain + K`), `ihex` signal bytes `+SS<hex>;` (Beast scale,
-  `adsb_ihex_sig`); all via `/api/set-adsb`. Driver vendored in
+  `adsb_ihex_sig`); all via `/api/set-adsb`.
+- ADS-B table dump: `CustomMQTTServer::on_subscribe` → `adsb_on_subscribe()`
+  re-publishes the aircraft table / replays last raw frame per class on
+  `ihex` (paced in `adsb_loop()`). Client mode: `ADSB/{icao}` retained
+  (`mqtt_publish(..., retain)`), `MQTTClient::sweep_retained()` clears
+  ghosts on reconnect. Status carries `boot` (random per boot). Driver vendored in
   `lib/rtlsdr/` (built only with the flag, via its `gate.py`).
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function

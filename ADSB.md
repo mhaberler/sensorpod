@@ -239,6 +239,32 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   port, EP/MPS, actual baud, connected duration, byte/frame counts;
   decoder and drop counters.
 
+### Table dump on subscribe & retain
+
+- **Broker mode** (PicoMQTT ignores retain): `CustomMQTTServer::on_subscribe`
+  → `adsb_on_subscribe(filter)`. If the filter matches `[host/]ADSB/000000`
+  the whole aircraft table is re-published; if it matches `[host/]ihex` the
+  stored raw frames are replayed (`#` → both). Subscribes within 1 s are
+  coalesced; the dump is paced at 10 publishes per `adsb_loop()` pass.
+  PicoMQTT can only publish to every matching subscriber, so existing
+  subscribers see duplicates (idempotent state). Toggles apply as for live
+  traffic (no dump with publish off, no replay with ihex off; `+SS` when
+  ihex signal is on).
+- **ihex replay**: per aircraft the last frame of each class is kept
+  (binary + signal + time): ident (TC1–4) and op-status (TC31) while the
+  aircraft lives; even/odd airborne position (TC9–18) only if ≤ 10 s old
+  (CPR pair window, so no stale positions get re-dated — replayed frames
+  carry no timestamp); velocity (TC19) and emergency (TC28) ≤ 60 s.
+  Enough for an ihex-only decoder to rebuild ident, position and velocity.
+- **Client mode**: `ADSB/{icao}` and tombstones are published with MQTT
+  retain, so the remote broker serves the table to new subscribers (empty
+  retained payload deletes). On every (re)connect a sweep subscribes
+  `[host/]ADSB/+` for 2 s, collects retained topics and clears those whose
+  icao isn't in the live table (ghosts from a previous boot).
+  `ihex` is never retained.
+- No wall clock on the pod: `{hostname}/status` carries `boot` (random
+  hex32 per boot) next to `uptime`, so consumers can detect reboots.
+
 ## Status
 
 `m5stack-nanoc6` (default), `esp32p4_waveshare_devkit_adsb` and
@@ -258,7 +284,10 @@ Verified on hardware with an RTL2838UHIDIR (R820T, `0bda:2838`): attach,
 ~9 frames/s, 0 CRC fails, 14 aircraft within 30 s; ihex `+SS` bytes match
 per-aircraft `rssi`; gain change 49.6→37.2 dB applied live (noise −34.4 →
 −44.1 dBFS, clipping stopped); `rssi_dbm`/`adsb_noise_dbm` arithmetic and
-`/api/set-adsb` validation checked. At max gain the dongle clipped
+`/api/set-adsb` validation checked. Table dump (broker mode) verified: a
+fresh `ADSB/#` subscriber got all 14 live aircraft within 1.6 s; a fresh
+`ihex` subscriber got a 46-frame replay burst at ~1 s. Client-mode retain
++ sweep not yet tested on hardware. At max gain the dongle clipped
 (~21 k I/Q bytes in 25 s) — lower gain is likely better for this site.
 
 ## Deferred / not implemented
