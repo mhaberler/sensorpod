@@ -280,7 +280,9 @@ void loop() {
       for (int k = 0; k < c.cores; k++)
         doc[k ? "cpu1" : "cpu0"] = roundf(c.core[k] * 10) / 10;
     }
-    doc["rssi"] = WiFi.RSSI();
+    // RSSI is an RPC on hosted (P4) boards and fails without an STA link.
+    if (WiFi.status() == WL_CONNECTED)
+      doc["rssi"] = WiFi.RSSI();
     if (numClicks) {
       doc["clicks"] = numClicks;
       numClicks = 0;

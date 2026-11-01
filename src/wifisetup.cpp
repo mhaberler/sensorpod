@@ -57,7 +57,12 @@ static bool sta_is_5g = false;
 // wifi_loop() skips webserver_loop(), main.cpp skips status publish, and
 // BLE is stopped before the OTA runs.
 static volatile bool hosted_update_in_progress = false;
-static uint8_t last_ap_station_num = 0;
+// AP client count, maintained from Wi-Fi events. Polling
+// WiFi.softAPgetStationNum() is an RPC round trip to the hosted
+// co-processor; called from every loop() it flooded the SDIO link, and an
+// RPC timeout there NULL-derefs inside ESP-Hosted's
+// rpc_wifi_ap_get_sta_list() (seen on Tab5 and P4-4B).
+static volatile uint8_t ap_station_count = 0;
 
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
 // GOT_IP only arms this; wifi_loop() runs the OTA off the NetworkEvents task
@@ -111,13 +116,7 @@ bool hosted_ota_done() { return hosted_ota_attempted; }
 bool hosted_ota_done() { return true; }
 #endif
 
-uint8_t safe_ap_station_num() {
-  if (hosted_update_in_progress) {
-    return last_ap_station_num;
-  }
-  last_ap_station_num = WiFi.softAPgetStationNum();
-  return last_ap_station_num;
-}
+uint8_t safe_ap_station_num() { return ap_station_count; }
 
 static const char *auth_mode_str(wifi_auth_mode_t mode) {
   switch (mode) {
@@ -204,6 +203,17 @@ static void onNetworkEvent(arduino_event_id_t event) {
     break;
   case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
     log_d("AP client got IP");
+    break;
+  case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+    ap_station_count++;
+    break;
+  case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+    if (ap_station_count)
+      ap_station_count--;
+    break;
+  case ARDUINO_EVENT_WIFI_AP_START:
+  case ARDUINO_EVENT_WIFI_AP_STOP:
+    ap_station_count = 0;
     break;
   case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
     log_w("STA disconnected");
