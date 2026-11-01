@@ -40,15 +40,27 @@ extern "C" {
 #define RTLSDR_XFER 16384                // bytes per bulk read
 #define RTLSDR_BUF_LEN (RTLSDR_XFER * 8) // bytes demodulated per pass
 #define RTLSDR_MAX_ERRORS 10             // consecutive, then give up
+#define RTLSDR_NBUF 4 // reader -> demod buffers (PSRAM, RTLSDR_BUF_LEN each)
+#define RTLSDR_BUF_US (RTLSDR_BUF_LEN / 2 * 1000000LL / RTLSDR_RATE) // 32768
+#define RTLSDR_COV_WINDOW_US 2000000
 
 static usb_host_client_handle_t client;
 static QueueHandle_t new_dev_queue;
 static volatile usb_device_handle_t session_hdl; // device being streamed
 static volatile bool gone;
 
-static mode_s_t mode_s_ctx;
-static uint8_t *iq_buf;
-static uint16_t *mag_buf;
+// Reading and demodulating overlap: this USB task keeps reading (the
+// driver's sync transfers pump this client's events, so reads must stay
+// here), handing full buffers to demod_task on the other core. If the
+// demodulator falls behind and no buffer is free, the reader reads into
+// `scratch` and drops it (overrun) rather than stalling the dongle.
+static mode_s_t mode_s_ctx; // demod_task only
+static uint8_t *iq_bufs[RTLSDR_NBUF];
+static uint8_t *scratch;
+static uint16_t *mag_buf;            // demod_task only
+static QueueHandle_t free_q, full_q; // buffer indices
+static volatile bool cov_reset;
+static volatile uint32_t total_overruns;
 
 static AdsbRtlsdrInfo info; // published once connected is set
 static volatile uint32_t total_bytes, total_errors, total_frames;
@@ -69,6 +81,7 @@ AdsbRtlsdrInfo adsb_rtlsdr_info() {
   i.cal_k = cal_k;
   i.demod_duty = demod_duty_ema;
   i.coverage = coverage_ema;
+  i.overruns = total_overruns;
   i.noise_dbm = adsb_rtlsdr_dbm(i.noise_dbfs);
   return i;
 }
@@ -164,6 +177,7 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
   i.connected = true;
   info = i;
   adsb_source_rtlsdr_attached();
+  cov_reset = true;
   log_w("ADS-B RTL-SDR: %s connected addr %u, %04x:%04x, %lu Hz, %lu S/s, "
         "gain %.1f dB, bias-tee %s; UART input suspended",
         i.model, addr, vid, pid, (unsigned long)rtlsdr_get_center_freq(dev),
@@ -182,20 +196,24 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
         log_w("ADS-B RTL-SDR: gain %.1f dB", info.gain / 10.0);
       }
     }
+    uint8_t idx;
+    bool have = xQueueReceive(free_q, &idx, 0) == pdTRUE;
+    uint8_t *buf = have ? iq_bufs[idx] : scratch;
     bool ok = true;
-    int64_t t_read = esp_timer_get_time();
     for (int off = 0; off < RTLSDR_BUF_LEN && !gone; off += RTLSDR_XFER) {
       int n = 0;
-      r = rtlsdr_read_sync(dev, iq_buf + off, RTLSDR_XFER, &n);
+      r = rtlsdr_read_sync(dev, buf + off, RTLSDR_XFER, &n);
       if (r < 0 || n < RTLSDR_XFER) {
         ok = false;
         break;
       }
       total_bytes += n;
     }
-    if (gone)
-      break;
-    if (!ok) {
+    if (!ok || gone) {
+      if (have)
+        xQueueSend(free_q, &idx, 0);
+      if (gone)
+        break;
       total_errors++;
       if (++errors >= RTLSDR_MAX_ERRORS) {
         why = "read errors";
@@ -205,7 +223,35 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
       continue;
     }
     errors = 0;
-    int64_t t_demod = esp_timer_get_time();
+    if (have)
+      xQueueSend(full_q, &idx, 0);
+    else
+      total_overruns++;
+  }
+
+  info.connected = false;
+  uint32_t frames = adsb_source_rtlsdr_detached();
+  log_w("ADS-B RTL-SDR: addr %u disconnected (%s) after %lus, %lu frames; "
+        "falling back to UART",
+        addr, why, (unsigned long)((millis() - i.attached_ms) / 1000),
+        (unsigned long)frames);
+  rtlsdr_close(dev);
+}
+
+// Demodulates full buffers from the reader; pinned to the other core.
+static void demod_task(void *) {
+  int64_t win_start = 0;
+  uint32_t win_bufs = 0;
+  for (;;) {
+    uint8_t idx;
+    xQueueReceive(full_q, &idx, portMAX_DELAY);
+    int64_t t0 = esp_timer_get_time();
+    if (cov_reset) {
+      cov_reset = false;
+      win_start = t0;
+      win_bufs = 0;
+    }
+    uint8_t *iq_buf = iq_bufs[idx];
     // One pass: magnitudes, clipped I/Q bytes, sum of I^2+Q^2.
     uint32_t clipped, iq_pwr;
     mode_s_compute_magnitude_vector_stats(iq_buf, mag_buf, RTLSDR_BUF_LEN,
@@ -218,26 +264,22 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
                                  (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
                              1e-12f);
     mode_s_detect(&mode_s_ctx, mag_buf, RTLSDR_BUF_LEN / 2, on_msg);
+    xQueueSend(free_q, &idx, 0);
 
-    // Buffer airtime vs. time spent reading + demodulating it; samples
-    // arriving while demodulating are lost (sync reads, no queueing).
-    const float buf_us = RTLSDR_BUF_LEN / 2 * 1e6f / RTLSDR_RATE;
-    int64_t t_end = esp_timer_get_time();
-    float duty = 100.0f * (t_end - t_demod) / buf_us;
-    // Reads can drain the dongle's FIFO faster than real time: cap at 100.
-    float cov = fminf(100.0f, 100.0f * buf_us / (float)(t_end - t_read));
+    // Demod time vs. buffer airtime; coverage = airtime demodulated per
+    // wall time over RTLSDR_COV_WINDOW_US (overruns and read gaps lower it).
+    int64_t t1 = esp_timer_get_time();
+    float duty = 100.0f * (t1 - t0) / RTLSDR_BUF_US;
     demod_duty_ema =
         demod_duty_ema ? demod_duty_ema * 0.95f + duty * 0.05f : duty;
-    coverage_ema = coverage_ema ? coverage_ema * 0.95f + cov * 0.05f : cov;
+    win_bufs++;
+    if (t1 - win_start >= RTLSDR_COV_WINDOW_US) {
+      coverage_ema = fminf(100.0f, 100.0f * win_bufs * RTLSDR_BUF_US /
+                                       (float)(t1 - win_start));
+      win_start = t1;
+      win_bufs = 0;
+    }
   }
-
-  info.connected = false;
-  uint32_t frames = adsb_source_rtlsdr_detached();
-  log_w("ADS-B RTL-SDR: addr %u disconnected (%s) after %lus, %lu frames; "
-        "falling back to UART",
-        addr, why, (unsigned long)((millis() - i.attached_ms) / 1000),
-        (unsigned long)frames);
-  rtlsdr_close(dev);
 }
 
 // Returns true (and the ids) if the device at addr is an RTL2832U.
@@ -285,9 +327,16 @@ static void rtlsdr_task(void *) {
 }
 
 void adsb_rtlsdr_setup() {
-  iq_buf = (uint8_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
+  free_q = xQueueCreate(RTLSDR_NBUF, sizeof(uint8_t));
+  full_q = xQueueCreate(RTLSDR_NBUF, sizeof(uint8_t));
+  bool ok = free_q && full_q;
+  for (uint8_t k = 0; k < RTLSDR_NBUF && ok; k++) {
+    iq_bufs[k] = (uint8_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
+    ok = iq_bufs[k] && xQueueSend(free_q, &k, 0) == pdTRUE;
+  }
+  scratch = (uint8_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
   mag_buf = (uint16_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
-  if (!iq_buf || !mag_buf) {
+  if (!ok || !scratch || !mag_buf) {
     log_e("ADS-B RTL-SDR: PSRAM buffer alloc failed, disabled");
     return;
   }
@@ -305,7 +354,15 @@ void adsb_rtlsdr_setup() {
           esp_err_to_name(err));
     return;
   }
-  xTaskCreate(rtlsdr_task, "adsb_rtlsdr", 8192, nullptr, 3, nullptr);
+  // Reader on core 0 next to the USB host lib task; demodulator alone on
+  // the other core (core 1 on the P4; same core on single-core chips).
+  // Demod at priority 1 = Arduino loopTask (also core 1): they time-slice,
+  // so under overload the buffer queue overruns (counted) instead of the
+  // web UI/MQTT loop starving.
+  xTaskCreatePinnedToCore(rtlsdr_task, "adsb_rtlsdr", 8192, nullptr, 3, nullptr,
+                          0);
+  xTaskCreatePinnedToCore(demod_task, "adsb_demod", 8192, nullptr, 1, nullptr,
+                          portNUM_PROCESSORS > 1 ? 1 : 0);
   log_w("ADS-B RTL-SDR: waiting for dongle (%u Hz, %u S/s)", RTLSDR_FREQ,
         RTLSDR_RATE);
 }

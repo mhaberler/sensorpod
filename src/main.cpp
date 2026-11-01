@@ -311,6 +311,7 @@ void loop() {
         doc["adsb_rtl_gain"] = r.gain / 10.0;
         doc["adsb_rtl_demod_duty"] = roundf(r.demod_duty * 10) / 10;
         doc["adsb_rtl_coverage"] = roundf(r.coverage * 10) / 10;
+        doc["adsb_rtl_overruns"] = r.overruns;
       }
       doc["adsb_strong_signals"] = r.strong_signals;
       doc["adsb_clipped"] = r.clipped;

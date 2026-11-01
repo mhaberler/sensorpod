@@ -116,10 +116,18 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   non-OTG chips have no `usb/usb_host.h`.
 - Second USB host client next to the FTDI one; both see every attach, each
   ignores foreign VID:PIDs. Driver transfers are synchronous and pump
-  client events themselves, so one task (`adsb_rtlsdr`) waits for attach
-  and runs the session: 8 × 16 KiB bulk reads (PSRAM) → magnitude →
-  libmodes `mode_s_detect()` (single-bit fix on, aggressive off) → repeat.
-  Samples arriving during demod are dropped (same as ADS-B Scope).
+  client events themselves, so the reader task `adsb_rtlsdr` (core 0,
+  prio 3) waits for attach and does all USB I/O: 8 × 16 KiB bulk reads
+  into one of 4 PSRAM buffers (128 KiB = 32.8 ms each), back-to-back.
+- Demodulation overlaps reading: `adsb_demod` (pinned to core 1, prio 1 =
+  Arduino `loopTask`, so they time-slice) takes full buffers from a queue,
+  runs `mode_s_compute_magnitude_vector_stats()` (magnitudes + clipping +
+  I²+Q² in one pass) and libmodes `mode_s_detect()` (single-bit fix on,
+  aggressive off), and returns the buffer. If no buffer is free the reader
+  reads into a scratch buffer and counts an overrun instead of stalling.
+- Measured on Tab5: coverage (demodulated airtime / wall time) 65 % →
+  ≈99.6 % vs. the earlier sequential read→demod loop; demod duty ≈55 % of
+  real time on core 1, 0 overruns.
 - 1090 MHz, 2 MS/s, manual gain (no tuner AGC, no adaptive gain): web UI
   dropdown of the attached tuner's steps, NVS `rtl_gain` (tenths dB),
   applied live between buffers; unset → `ADSB_RTLSDR_GAIN` (default `-1` =
@@ -158,7 +166,8 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   `adsb_rtlsdr_frames`, `adsb_noise_dbfs` (mean power of the last 64 Ki
   samples — messages are sparse, so ≈ noise floor), `adsb_strong_signals`
   (frames > −3 dBFS) and `adsb_clipped` (I/Q bytes at 0/255), plus
-  `adsb_rtl_gain` (dB, while attached) and `adsb_noise_dbm` (if K set).
+  `adsb_rtl_gain` (dB, while attached) and `adsb_noise_dbm` (if K set),
+  `adsb_rtl_demod_duty`, `adsb_rtl_coverage`, `adsb_rtl_overruns`.
   Rising strong/clipped counts = gain too high. Web UI shows model/tuner, rate,
   gain, bias-tee, I/Q bytes, read errors, frames, noise floor, overload.
 

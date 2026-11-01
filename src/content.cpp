@@ -350,8 +350,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     if (r.connected)
       appendf(out,
               "<tr><td>RTL-SDR airtime</td><td>%.1f %% of samples "
-              "demodulated, demod %.1f %% of buffer time</td></tr>",
-              r.coverage, r.demod_duty);
+              "demodulated, demod %.1f %% of buffer time, %lu overruns"
+              "</td></tr>",
+              r.coverage, r.demod_duty, (unsigned long)r.overruns);
 #endif
     appendf(out,
             "<tr><td>Decoder</td><td>%lu frames, %lu CRC fail, %lu decoded, "

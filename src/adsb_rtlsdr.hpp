@@ -43,9 +43,10 @@ struct AdsbRtlsdrInfo {
   float cal_k;             // dBm = dBFS - gain + cal_k; NAN = uncalibrated
   // Airtime actually processed (EMA per buffer): each buffer holds
   // RTLSDR_BUF_LEN/2 samples = 32.8 ms at 2 MS/s.
-  float demod_duty; // demod time / buffer duration, %
-  float coverage;   // buffer duration / (read + demod time), %
-  float noise_dbm;  // NAN unless calibrated and noise known
+  float demod_duty;  // demod time / buffer duration, %
+  float coverage;    // airtime demodulated / wall time (2 s window), %
+  uint32_t overruns; // buffers dropped: demodulator fell behind
+  float noise_dbm;   // NAN unless calibrated and noise known
 };
 AdsbRtlsdrInfo adsb_rtlsdr_info();
 
