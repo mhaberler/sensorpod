@@ -108,7 +108,7 @@ The active build envs cover a fleet of M5Stack boards plus a few generic devkits
 - **[Seeed XIAO ESP32-C6](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/)**
 - **[ESP32-C5 DevKit](https://www.waveshare.com/esp32-c5-wifi6-kit-n16r4.htm)**
 - **[ESP32-P4-WiFi6](https://www.waveshare.com/esp32-p4-wifi6.htm)**
-- **[Waveshare ESP32-P4-WIFI6-Touch-LCD-4B](https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-4B)**: envs `waveshare-p4-4b` (camera version) and `waveshare-p4-4b-86panel` (86-Panel ETH/RS485/relays); built for ESP32-P4 silicon rev1.x — see the env comment for rev3.x units
+- **[Waveshare ESP32-P4-WIFI6-Touch-LCD-4B](https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-4B)**: envs `waveshare-p4-4b` (camera version), `waveshare-p4-4b-86panel` (86-Panel ETH/RS485/relays) and `waveshare-p4-4b-adsb` (ADS-B: UART on GPIO4/5, USB/RTL-SDR on the OTG port via a powered hub — the port has no VBUS out); built for ESP32-P4 silicon rev1.x — see the env comment for rev3.x units
 
 ## Devices
 
