@@ -281,6 +281,16 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   port, EP/MPS, actual baud, connected duration, byte/frame counts;
   decoder and drop counters.
 
+### Web UI aircraft table
+
+- `GET /api/aircraft` streams `{"uptime":s,"aircraft":[…]}` with the same
+  objects as `ADSB/{icao}` (`aircraft_to_json()` shared with the MQTT
+  publish), chunked so no large String is built. Served from the loop task,
+  which also owns the aircraft table — no locking.
+- The ADS-B section on `/` has a collapsible "Aircraft (n)" table (hex,
+  flight, altitude, GS, track, lat/lon, RSSI dBm/dBFS, NIC/Rc, messages,
+  seen), refreshed every 2 s while open and the tab is visible.
+
 ### Table dump on subscribe & retain
 
 - **Broker mode** (PicoMQTT ignores retain): `CustomMQTTServer::on_subscribe`

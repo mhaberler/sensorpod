@@ -363,6 +363,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             "<tr><td>Dropped</td><td>%lu bad lines, %lu overflow</td></tr>",
             (unsigned long)s.dropped_lines, (unsigned long)s.dropped_overflow);
     out += "</table>";
+    // Live aircraft table, filled by loadAc() from /api/aircraft.
+    out += "<details id='acBox' open><summary id='acSum'>Aircraft</summary>"
+           "<div id='acTable'>loading…</div></details>";
   }
 #endif
 
@@ -467,6 +470,34 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "a.toString(16).padStart(2,'0')+'</td></tr>'});});"
       "el.innerHTML=h+'</table>';})"
       ".catch(e=>{el.textContent='Error: '+e})}"
+      // ADS-B aircraft table: poll /api/aircraft every 2 s while the
+      // <details> is open and the tab visible.
+      "function acEsc(v){return String(v).replace(/[&<>'\"]/g,"
+      "c=>'&#'+c.charCodeAt(0)+';')}"
+      "function loadAc(){var b=document.getElementById('acBox');"
+      "if(!b||!b.open||document.hidden)return;"
+      "fetch('/api/aircraft').then(r=>r.json()).then(d=>{"
+      "var a=d.aircraft||[];a.sort((x,y)=>x.seen-y.seen);"
+      "document.getElementById('acSum').textContent='Aircraft ('+a.length+')';"
+      "var "
+      "f=(v,n)=>v===undefined?'–':(n!==undefined?Number(v).toFixed(n):acEsc(v))"
+      ";"
+      "var h='<table><tr><th>Hex</th><th>Flight</th><th>Alt ft</th><th>GS "
+      "kt</th>"
+      "<th>Trk</th><th>Lat</th><th>Lon</th><th>RSSI</th><th>NIC/Rc</th>"
+      "<th>Msgs</th><th>Seen s</th></tr>';"
+      "a.forEach(x=>{var alt=x.alt_baro!==undefined?x.alt_baro:x.alt_geom;"
+      "var rs=x.rssi_dbm!==undefined?f(x.rssi_dbm,1)+' dBm':"
+      "(x.rssi!==undefined?f(x.rssi,1)+' dBFS':'–');"
+      "h+='<tr><td>'+f(x.hex)+'</td><td>'+f(x.flight)+'</td><td>'+f(alt)+"
+      "'</td><td>'+f(x.gs)+'</td><td>'+f(x.track)+'</td><td>'+f(x.lat,4)+"
+      "'</td><td>'+f(x.lon,4)+'</td><td>'+rs+'</td><td>'+(x.nic!==undefined?"
+      "f(x.nic)+'/'+f(x.rc):'–')+'</td><td>'+f(x.messages)+'</td><td>'+"
+      "f(x.seen,1)+'</td></tr>'});"
+      "document.getElementById('acTable').innerHTML=h+'</table>';})"
+      ".catch(e=>{document.getElementById('acTable').textContent='Error: '+e})}"
+      "if(document.getElementById('acBox')){loadAc();setInterval(loadAc,2000);"
+      "document.getElementById('acBox').addEventListener('toggle',loadAc)}"
       "function saveAdsb(k,c){"
       "fetch('/api/"
       "set-adsb',{method:'POST',headers:{'Content-Type':"

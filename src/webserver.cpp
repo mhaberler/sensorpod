@@ -118,6 +118,17 @@ void webserver_setup() {
   });
 
 #ifdef ADSB_UART
+  // Aircraft table as JSON, streamed in chunks (up to 100 aircraft).
+  http_server.on("/api/aircraft", HTTP_GET, []() {
+    http_server.sendHeader("Cache-Control", "no-store");
+    http_server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    http_server.send(200, "application/json", "");
+    adsb_aircraft_stream(
+        [](const char *chunk, void *) { http_server.sendContent(chunk); },
+        nullptr);
+    http_server.sendContent(""); // end of chunked response
+  });
+
   // ADS-B publish toggles. Saved to NVS, applied live.
   http_server.on("/api/set-adsb", HTTP_POST, []() {
     log_request();

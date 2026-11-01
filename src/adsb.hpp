@@ -29,3 +29,8 @@ struct AdsbStats {
 };
 
 AdsbStats adsb_get_stats();
+
+// Streams {"uptime":s,"aircraft":[{...},...]} (same objects as ADSB/{icao})
+// in chunks via emit(). Call from the loop task only (aircraft table owner).
+void adsb_aircraft_stream(void (*emit)(const char *chunk, void *ctx),
+                          void *ctx);

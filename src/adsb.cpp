@@ -550,8 +550,10 @@ static void icao_to_hex(uint32_t icao, char *out /* 7 bytes */) {
   snprintf(out, 7, "%06x", (unsigned)icao);
 }
 
-static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
-  JsonDocument doc;
+// readsb aircraft.json-style object for one aircraft (MQTT ADSB/{icao} and
+// the web UI's /api/aircraft).
+static void aircraft_to_json(const Aircraft &ac, JsonDocument &doc,
+                             uint32_t now) {
   char hex[7];
   icao_to_hex(ac.icao, hex);
   doc["hex"] = hex;
@@ -622,10 +624,15 @@ static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
       doc["rssi_dbm"] = roundf(dbm * 10) / 10;
 #endif
   }
+}
 
+static void adsb_publish_aircraft(Aircraft &ac, uint32_t now) {
+  JsonDocument doc;
+  aircraft_to_json(ac, doc, now);
   String payload;
   serializeJson(doc, payload);
-  char topic[16];
+  char hex[7], topic[16];
+  icao_to_hex(ac.icao, hex);
   snprintf(topic, sizeof(topic), "ADSB/%s", hex);
   mqtt_publish(topic, payload.c_str(), true); // retained in client mode
 
@@ -661,6 +668,29 @@ static void adsb_table_loop() {
       adsb_publish_aircraft(ac, now);
     }
   }
+}
+
+void adsb_aircraft_stream(void (*emit)(const char *chunk, void *ctx),
+                          void *ctx) {
+  uint32_t now = millis();
+  char head[48];
+  snprintf(head, sizeof(head), "{\"uptime\":%lu,\"aircraft\":[",
+           (unsigned long)(now / 1000));
+  emit(head, ctx);
+  bool first = true;
+  for (const auto &ac : aircraft_table) {
+    if (!ac.used)
+      continue;
+    JsonDocument doc;
+    aircraft_to_json(ac, doc, now);
+    String s;
+    serializeJson(doc, s); // replaces s, so the separator goes out separately
+    if (!first)
+      emit(",", ctx);
+    emit(s.c_str(), ctx);
+    first = false;
+  }
+  emit("]}", ctx);
 }
 
 void adsb_signal_reset() { adsb_signal_reset_pending = true; }
