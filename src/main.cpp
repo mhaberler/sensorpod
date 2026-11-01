@@ -240,7 +240,9 @@ void loop() {
     JsonDocument doc;
     doc["uptime"] = now / 1000;
     doc["cpu_temperature"] = temperatureRead();
-    doc["rssi"] = WiFi.RSSI();
+    // RSSI is an RPC on hosted (P4) boards and fails without an STA link.
+    if (WiFi.status() == WL_CONNECTED)
+      doc["rssi"] = WiFi.RSSI();
     if (numClicks) {
       doc["clicks"] = numClicks;
       numClicks = 0;
