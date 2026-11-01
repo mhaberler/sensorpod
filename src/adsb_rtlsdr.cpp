@@ -206,19 +206,17 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
     }
     errors = 0;
     int64_t t_demod = esp_timer_get_time();
-    uint32_t clipped = 0;
-    for (int k = 0; k < RTLSDR_BUF_LEN; k++)
-      clipped += iq_buf[k] == 0 || iq_buf[k] == 255;
+    // One pass: magnitudes, clipped I/Q bytes, sum of I^2+Q^2.
+    uint32_t clipped, iq_pwr;
+    mode_s_compute_magnitude_vector_stats(iq_buf, mag_buf, RTLSDR_BUF_LEN,
+                                          &clipped, &iq_pwr);
     total_clipped += clipped;
-    mode_s_compute_magnitude_vector(iq_buf, mag_buf, RTLSDR_BUF_LEN);
     // Noise floor: messages occupy a tiny fraction of the buffer, so the
     // mean power of all samples is the noise power (readsb local.noise).
-    uint64_t pwr = 0;
-    for (int k = 0; k < RTLSDR_BUF_LEN / 2; k++)
-      pwr += (uint32_t)mag_buf[k] * mag_buf[k];
-    noise_dbfs =
-        10 * log10f((float)pwr / (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
-                    1e-12f);
+    // mag = sqrt(I^2+Q^2) * 360 (libmodes LUT), full scale 65535.
+    noise_dbfs = 10 * log10f((float)iq_pwr * (360.0f * 360.0f) /
+                                 (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
+                             1e-12f);
     mode_s_detect(&mode_s_ctx, mag_buf, RTLSDR_BUF_LEN / 2, on_msg);
 
     // Buffer airtime vs. time spent reading + demodulating it; samples

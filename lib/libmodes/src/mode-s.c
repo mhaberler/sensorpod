@@ -604,6 +604,33 @@ void mode_s_compute_magnitude_vector(unsigned char *data, uint16_t *mag,
   }
 }
 
+// mode_s_compute_magnitude_vector() plus, in the same pass, the number of
+// I/Q bytes at the ADC rails (0 or 255: clipping) and the sum of I^2+Q^2
+// (mean power; fits 32 bits for size <= 262144: 128^2 * 2 per sample).
+// Patch: sensorpod RTL-SDR, replaces two extra passes over the buffer.
+void mode_s_compute_magnitude_vector_stats(unsigned char *data, uint16_t *mag,
+                                           uint32_t size, uint32_t *clipped,
+                                           uint32_t *iq_power) {
+  uint32_t j, clip = 0, pwr = 0;
+
+  for (j = 0; j < size; j += 2) {
+    unsigned di = data[j], dq = data[j + 1];
+    // (uint8_t)(d + 1) <= 1 exactly for d == 255 and d == 0
+    clip += ((uint8_t)(di + 1) <= 1) + ((uint8_t)(dq + 1) <= 1);
+    int i = (int)di - 127;
+    int q = (int)dq - 127;
+
+    if (i < 0)
+      i = -i;
+    if (q < 0)
+      q = -q;
+    pwr += i * i + q * q;
+    mag[j / 2] = maglut[i * 129 + q];
+  }
+  *clipped = clip;
+  *iq_power = pwr;
+}
+
 // Return -1 if the message is out of fase left-side
 // Return  1 if the message is out of fase right-size
 // Return  0 if the message is not particularly out of phase.

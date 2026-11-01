@@ -15,6 +15,8 @@
 //  - Airborne position TC20-22 (GNSS height) decoded like TC9-18; NIC-B
 //    (ME bit 8) for both. TC19 st1-4: NACv. Bits per readsb
 //    decodeESOperationalStatus/AirbornePosition/AirborneVelocity.
+//  - mode_s_compute_magnitude_vector_stats(): magnitudes + clipping count +
+//    I/Q power sum in one pass (RTL-SDR noise/overload stats).
 //  - mode_s_detect(): signal_level (mean power of the message's pulse
 //    samples, 0..1 of full scale; 10*log10 = dBFS, as dump1090-fa/readsb).
 // See sensorpod ADSB.md for details.
@@ -136,6 +138,9 @@ extern "C" {
 void mode_s_init(mode_s_t *self);
 void mode_s_compute_magnitude_vector(unsigned char *data, uint16_t *mag,
                                      uint32_t size);
+void mode_s_compute_magnitude_vector_stats(unsigned char *data, uint16_t *mag,
+                                           uint32_t size, uint32_t *clipped,
+                                           uint32_t *iq_power);
 void mode_s_detect(mode_s_t *self, uint16_t *mag, uint32_t maglen,
                    mode_s_callback_t);
 void mode_s_decode(mode_s_t *self, struct mode_s_msg *mm, unsigned char *msg);
