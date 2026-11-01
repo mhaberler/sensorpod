@@ -6,6 +6,7 @@
 #error "ADSB_RTLSDR needs ADSB_UART and ADSB_USB (shared USB host install)"
 #endif
 
+#include "demod_chunk.hpp"
 #include "deviceconfig.hpp"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
@@ -57,8 +58,16 @@ static volatile bool gone;
 static mode_s_t mode_s_ctx; // demod_task only
 static uint8_t *iq_bufs[RTLSDR_NBUF];
 static uint8_t *scratch;
-static uint16_t *mag_buf;            // demod_task only
-static QueueHandle_t free_q, full_q; // buffer indices
+static uint16_t *mag_chunk;  // demod_task only, internal RAM (DEMOD_MAG_LEN)
+static QueueHandle_t free_q; // buffer indices
+static QueueHandle_t full_q; // FullBuf
+// seq counts every read attempt (good, overrun or failed), so the
+// demodulator sees gaps and doesn't carry samples across them.
+struct FullBuf {
+  uint8_t idx;
+  uint32_t seq;
+};
+static uint32_t read_seq; // reader only
 static volatile bool cov_reset;
 static volatile uint32_t total_overruns;
 
@@ -196,6 +205,7 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
         log_w("ADS-B RTL-SDR: gain %.1f dB", info.gain / 10.0);
       }
     }
+    uint32_t seq = read_seq++;
     uint8_t idx;
     bool have = xQueueReceive(free_q, &idx, 0) == pdTRUE;
     uint8_t *buf = have ? iq_bufs[idx] : scratch;
@@ -223,10 +233,12 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
       continue;
     }
     errors = 0;
-    if (have)
-      xQueueSend(full_q, &idx, 0);
-    else
+    if (have) {
+      FullBuf fb = {idx, seq};
+      xQueueSend(full_q, &fb, 0);
+    } else {
       total_overruns++;
+    }
   }
 
   info.connected = false;
@@ -242,20 +254,23 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
 static void demod_task(void *) {
   int64_t win_start = 0;
   uint32_t win_bufs = 0;
+  DemodChunker chunker;
+  chunker.mag = mag_chunk;
   for (;;) {
-    uint8_t idx;
-    xQueueReceive(full_q, &idx, portMAX_DELAY);
+    FullBuf fb;
+    xQueueReceive(full_q, &fb, portMAX_DELAY);
+    uint8_t idx = fb.idx;
     int64_t t0 = esp_timer_get_time();
     if (cov_reset) {
       cov_reset = false;
       win_start = t0;
       win_bufs = 0;
     }
-    uint8_t *iq_buf = iq_bufs[idx];
-    // One pass: magnitudes, clipped I/Q bytes, sum of I^2+Q^2.
+    // Chunked through internal RAM, magnitude tail carried across
+    // consecutive buffers; also yields clipped I/Q bytes and sum of I^2+Q^2.
     uint32_t clipped, iq_pwr;
-    mode_s_compute_magnitude_vector_stats(iq_buf, mag_buf, RTLSDR_BUF_LEN,
-                                          &clipped, &iq_pwr);
+    demod_buffer(chunker, &mode_s_ctx, iq_bufs[idx], RTLSDR_BUF_LEN, fb.seq,
+                 on_msg, &clipped, &iq_pwr);
     total_clipped += clipped;
     // Noise floor: messages occupy a tiny fraction of the buffer, so the
     // mean power of all samples is the noise power (readsb local.noise).
@@ -263,7 +278,6 @@ static void demod_task(void *) {
     noise_dbfs = 10 * log10f((float)iq_pwr * (360.0f * 360.0f) /
                                  (RTLSDR_BUF_LEN / 2) / (65535.0f * 65535.0f) +
                              1e-12f);
-    mode_s_detect(&mode_s_ctx, mag_buf, RTLSDR_BUF_LEN / 2, on_msg);
     xQueueSend(free_q, &idx, 0);
 
     // Demod time vs. buffer airtime; coverage = airtime demodulated per
@@ -328,15 +342,16 @@ static void rtlsdr_task(void *) {
 
 void adsb_rtlsdr_setup() {
   free_q = xQueueCreate(RTLSDR_NBUF, sizeof(uint8_t));
-  full_q = xQueueCreate(RTLSDR_NBUF, sizeof(uint8_t));
+  full_q = xQueueCreate(RTLSDR_NBUF, sizeof(FullBuf));
   bool ok = free_q && full_q;
   for (uint8_t k = 0; k < RTLSDR_NBUF && ok; k++) {
     iq_bufs[k] = (uint8_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
     ok = iq_bufs[k] && xQueueSend(free_q, &k, 0) == pdTRUE;
   }
   scratch = (uint8_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
-  mag_buf = (uint16_t *)heap_caps_malloc(RTLSDR_BUF_LEN, MALLOC_CAP_SPIRAM);
-  if (!ok || !scratch || !mag_buf) {
+  mag_chunk = (uint16_t *)heap_caps_malloc(
+      DEMOD_MAG_LEN * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (!ok || !scratch || !mag_chunk) {
     log_e("ADS-B RTL-SDR: PSRAM buffer alloc failed, disabled");
     return;
   }
@@ -354,6 +369,34 @@ void adsb_rtlsdr_setup() {
           esp_err_to_name(err));
     return;
   }
+#ifdef DEMOD_BENCH // -DDEMOD_BENCH: deterministic demod timing on fixed noise
+  // at boot (compare compiler/code variants; live duty is too noisy)
+  {
+    uint32_t x = 12345;
+    for (int k = 0; k < RTLSDR_BUF_LEN; k++) {
+      x = x * 1103515245u + 12345u;
+      iq_bufs[0][k] = 124 + ((x >> 16) % 7); // noise around 127, +-3
+    }
+    static mode_s_t bctx; // 32 KB ICAO cache: not on the stack
+    mode_s_init(&bctx);
+    DemodChunker bc;
+    bc.mag = mag_chunk;
+    int64_t best = INT64_MAX, sum = 0;
+    for (int it = 0; it < 20; it++) {
+      uint32_t c, p;
+      int64_t t0 = esp_timer_get_time();
+      demod_buffer(bc, &bctx, iq_bufs[0], RTLSDR_BUF_LEN, it, on_msg, &c, &p);
+      int64_t dt = esp_timer_get_time() - t0;
+      sum += dt;
+      if (dt < best)
+        best = dt;
+    }
+    log_w("DEMOD_BENCH: avg %lld us, best %lld us per %d-byte buffer (%.1f %% "
+          "of %lld us airtime)",
+          sum / 20, best, RTLSDR_BUF_LEN, 100.0 * best / RTLSDR_BUF_US,
+          (long long)RTLSDR_BUF_US);
+  }
+#endif
   // Reader on core 0 next to the USB host lib task; demodulator alone on
   // the other core (core 1 on the P4; same core on single-core chips).
   // Demod at priority 1 = Arduino loopTask (also core 1): they time-slice,

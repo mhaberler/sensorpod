@@ -121,13 +121,22 @@ lives in `adsb_usb.cpp`). Enabled in `esp32p4_waveshare_devkit_adsb`.
   into one of 4 PSRAM buffers (128 KiB = 32.8 ms each), back-to-back.
 - Demodulation overlaps reading: `adsb_demod` (pinned to core 1, prio 1 =
   Arduino `loopTask`, so they time-slice) takes full buffers from a queue,
-  runs `mode_s_compute_magnitude_vector_stats()` (magnitudes + clipping +
-  I²+Q² in one pass) and libmodes `mode_s_detect()` (single-bit fix on,
-  aggressive off), and returns the buffer. If no buffer is free the reader
+  demodulates it in 8 k-sample chunks through a 16.5 KB **internal-RAM**
+  magnitude buffer (`src/demod_chunk.hpp`: `mode_s_compute_magnitude_vector_stats()`
+  — magnitudes + clipping + I²+Q² in one pass — then libmodes
+  `mode_s_detect()`, single-bit fix on, aggressive off), and returns the
+  buffer. Only the raw I/Q is read from PSRAM, once. Each chunk is
+  prefixed with the previous chunk's last 241 magnitudes (240-sample
+  detection window + 1 look-back), also across consecutive buffers, so
+  messages straddling a chunk or buffer boundary are found exactly once;
+  buffers carry a reader sequence number and any gap (overrun, read error,
+  new session) drops the carry. Host-tested against whole-stream
+  demodulation: identical frame set (the old per-buffer path lost every
+  frame straddling a 32.8 ms boundary). If no buffer is free the reader
   reads into a scratch buffer and counts an overrun instead of stalling.
 - Measured on Tab5: coverage (demodulated airtime / wall time) 65 % →
-  ≈99.6 % vs. the earlier sequential read→demod loop; demod duty ≈55 % of
-  real time on core 1, 0 overruns.
+  ≈99.6 % vs. the earlier sequential read→demod loop, 0 overruns; demod
+  duty ≈53 % → ≈47 % of real time on core 1 with internal-RAM chunking.
 - 1090 MHz, 2 MS/s, manual gain (no tuner AGC, no adaptive gain): web UI
   dropdown of the attached tuner's steps, NVS `rtl_gain` (tenths dB),
   applied live between buffers; unset → `ADSB_RTLSDR_GAIN` (default `-1` =
