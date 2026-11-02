@@ -7,7 +7,6 @@
 #include <stdarg.h>
 
 #include "BLEScanner.h"
-#include "cpuload.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
@@ -528,6 +527,29 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       ".catch(e=>{document.getElementById('acTable').textContent='Error: '+e})}"
       "if(document.getElementById('acBox')){loadAc();setInterval(loadAc,2000);"
       "document.getElementById('acBox').addEventListener('toggle',loadAc)}"
+      // CPU load table: poll /api/cpuload every 5 s (CPULOAD_INTERVAL_MS)
+      // while the <details> is open and the tab visible. The section comes
+      // after this script, so start on window load. On fetch error keep
+      // the last table and mark the per-core line stale.
+      "var cpuLine='';"
+      "function loadCpu(){var b=document.getElementById('cpuBox');"
+      "if(!b||!b.open||document.hidden)return;"
+      "var p=document.getElementById('cpuCores'),"
+      "tb=document.getElementById('cpuTable');"
+      "fetch('/api/cpuload').then(r=>r.json()).then(d=>{"
+      "if(!d.valid){p.textContent=cpuLine='collecting (first window)';"
+      "tb.innerHTML='';return;}"
+      "cpuLine=d.cores.map((v,k)=>'core '+k+': '+v.toFixed(1)+' %').join(', ')"
+      "+' (last '+d.window_ms+' ms)';p.textContent=cpuLine;"
+      "var h='<table><tr><th>Task</th><th>Core</th><th>Prio</th><th>%</th>"
+      "<th>Stack free</th></tr>';"
+      "d.tasks.forEach(t=>{h+='<tr><td>'+wsEsc(t.name)+'</td><td>'+"
+      "(t.core<0?'-':t.core)+'</td><td>'+t.prio+'</td><td>'+t.pct.toFixed(1)+"
+      "'</td><td>'+t.stack+'</td></tr>'});tb.innerHTML=h+'</table>';})"
+      ".catch(e=>{p.textContent=cpuLine?cpuLine+' (stale: '+e+')':'Error: "
+      "'+e})}"
+      "window.addEventListener('load',()=>{loadCpu();setInterval(loadCpu,5000);"
+      "document.getElementById('cpuBox').addEventListener('toggle',loadCpu)});"
       "function saveAdsb(k,c){"
       "fetch('/api/"
       "set-adsb',{method:'POST',headers:{'Content-Type':"
@@ -748,33 +770,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>Rev: %u</li>", ESP.getChipRevision());
   appendf(out, "<li>CPU: %u MHz</li></ul>", (unsigned)ESP.getCpuFreqMHz());
 
-  {
-    // FreeRTOS run-time stats over the last CPULOAD_INTERVAL_MS window;
-    // task % is of one core (100 % = one core busy).
-    const CpuLoad &c = cpuload_get();
-    out += "<h3>CPU load</h3>";
-    if (!c.valid) {
-      out += "<p>collecting (first window)</p>";
-    } else {
-      out += "<p>";
-      for (int k = 0; k < c.cores; k++)
-        appendf(out, "%score %d: %.1f %%", k ? ", " : "", k, c.core[k]);
-      appendf(out, " (last %lu ms)</p>", (unsigned long)c.window_ms);
-      out += "<table><tr><th>Task</th><th>Core</th><th>Prio</th>"
-             "<th>%</th><th>Stack free</th></tr>";
-      for (int k = 0; k < c.ntasks; k++) {
-        const CpuTask &t = c.tasks[k];
-        char core[4] = "-";
-        if (t.core >= 0)
-          snprintf(core, sizeof(core), "%d", t.core);
-        appendf(out,
-                "<tr><td>%s</td><td>%s</td><td>%u</td><td>%.1f</td>"
-                "<td>%lu</td></tr>",
-                t.name, core, t.prio, t.pct, (unsigned long)t.stack);
-      }
-      out += "</table>";
-    }
-  }
+  // Live CPU load, filled by loadCpu() from /api/cpuload: FreeRTOS run-time
+  // stats over the last CPULOAD_INTERVAL_MS window; task % is of one core
+  // (100 % = one core busy).
+  out += "<details id='cpuBox' open><summary>CPU load</summary>"
+         "<p id='cpuCores'>loading…</p><div id='cpuTable'></div></details>";
 
   out += "<h3>Memory</h3><ul>";
   {

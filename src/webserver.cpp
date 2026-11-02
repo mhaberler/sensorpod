@@ -1,4 +1,5 @@
 #include "BLEScanner.h"
+#include "cpuload.hpp"
 #include "credstore.hpp"
 #include "deviceconfig.hpp"
 #include "http_server.hpp"
@@ -7,6 +8,7 @@
 #include "adsb.hpp"
 #include "adsb_rtlsdr.hpp"
 #endif
+#include <ArduinoJson.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #if defined(BOARD_HAS_SDIO_ESP_HOSTED) && defined(ESP_HOSTED_DOWNGRADE)
@@ -221,6 +223,34 @@ void webserver_setup() {
                      "{\"status\":\"saved\",\"applied\":true}");
   });
 #endif
+
+  // CPU load (see cpuload.hpp), polled by the web UI every 5 s. Local data
+  // only - no hosted RPC; runs in the loop() task like cpuload_loop().
+  http_server.on("/api/cpuload", HTTP_GET, []() {
+    const CpuLoad &c = cpuload_get();
+    JsonDocument doc;
+    doc["valid"] = c.valid;
+    if (c.valid) {
+      doc["window_ms"] = c.window_ms;
+      JsonArray cores = doc["cores"].to<JsonArray>();
+      for (int k = 0; k < c.cores; k++)
+        cores.add(roundf(c.core[k] * 10) / 10);
+      JsonArray tasks = doc["tasks"].to<JsonArray>(); // sorted by pct, desc
+      for (int k = 0; k < c.ntasks; k++) {
+        const CpuTask &t = c.tasks[k];
+        JsonObject o = tasks.add<JsonObject>();
+        o["name"] = t.name;
+        o["core"] = t.core; // -1 = not pinned
+        o["prio"] = t.prio;
+        o["pct"] = roundf(t.pct * 10) / 10;
+        o["stack"] = t.stack;
+      }
+    }
+    String body;
+    serializeJson(doc, body);
+    http_server.sendHeader("Cache-Control", "no-store");
+    http_server.send(200, "application/json", body);
+  });
 
   // WiFi scan, async: ?start=1 kicks off a scan, plain GET polls state.
   http_server.on("/api/wifi-scan", HTTP_GET, []() {
