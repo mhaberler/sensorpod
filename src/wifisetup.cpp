@@ -48,6 +48,8 @@ static wl_status_t wifiStatus = WL_NO_SHIELD;
 static int sta_channel = 0;
 static wifi_auth_mode_t sta_authmode = WIFI_AUTH_OPEN;
 static bool sta_is_5g = false;
+// Connected AP's BSSID, cached on GOT_IP (no hosted RPC per scan request).
+static char sta_bssid[18] = "";
 
 // Set while updateEspHostedSlave() is flashing the ESP-Hosted co-processor.
 // The flash runs over the same RPC/SDIO transport as WiFi.* accessors and
@@ -145,6 +147,53 @@ int wifi_sta_channel() { return sta_channel; }
 const char *wifi_sta_band() { return sta_is_5g ? "5GHz" : "2.4GHz"; }
 const char *wifi_sta_encryption() { return auth_mode_str(sta_authmode); }
 
+// Async WiFi scan for /api/wifi-scan. start=true kicks off a scan (unless
+// one is running); otherwise reports state. Results are read from the
+// Arduino scan cache filled once on SCAN_DONE - no hosted RPC per poll.
+// status: running | busy (scan refused, e.g. STA connecting) | none | done
+String wifi_scan_json(bool start) {
+  int16_t n = WiFi.scanComplete();
+  if (start && n != WIFI_SCAN_RUNNING)
+    n = WiFi.scanNetworks(true);
+  if (n == WIFI_SCAN_RUNNING)
+    return "{\"status\":\"running\"}";
+  if (n < 0)
+    return start ? "{\"status\":\"busy\"}" : "{\"status\":\"none\"}";
+  String out = "{\"status\":\"done\",\"connected_bssid\":\"";
+  out += sta_bssid;
+  out += "\",\"aps\":[";
+  bool first = true;
+  for (int16_t i = 0; i < n; i++) {
+    String ssid = WiFi.SSID(i);
+    if (ssid.isEmpty())
+      continue; // hidden
+    if (!first)
+      out += ',';
+    first = false;
+    out += "{\"ssid\":\"";
+    for (char c : ssid) {
+      if (c == '"' || c == '\\') {
+        out += '\\';
+        out += c;
+      } else if ((uint8_t)c < 0x20) {
+        char esc[8];
+        snprintf(esc, sizeof(esc), "\\u%04x", (uint8_t)c);
+        out += esc;
+      } else {
+        out += c;
+      }
+    }
+    char buf[96];
+    snprintf(buf, sizeof(buf),
+             "\",\"bssid\":\"%s\",\"rssi\":%d,\"ch\":%u,\"auth\":\"%s\"}",
+             WiFi.BSSIDstr(i).c_str(), WiFi.RSSI(i), (unsigned)WiFi.channel(i),
+             auth_mode_str(WiFi.encryptionType(i)));
+    out += buf;
+  }
+  out += "]}";
+  return out;
+}
+
 // ESP32's single-radio AP+STA mode forces the AP onto whatever channel the
 // STA is connected to, once STA associates - the requested channel passed
 // to WiFi.AP.create() is only a starting point. Read back the effective
@@ -186,6 +235,9 @@ static void onNetworkEvent(arduino_event_id_t event) {
       if (esp_wifi_sta_get_ap_info(&info) == ESP_OK) {
         sta_channel = info.primary;
         sta_authmode = info.authmode;
+        snprintf(sta_bssid, sizeof(sta_bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 info.bssid[0], info.bssid[1], info.bssid[2], info.bssid[3],
+                 info.bssid[4], info.bssid[5]);
         sta_is_5g =
             sta_channel > 14 || info.phy_11a || info.phy_11ac || info.phy_11ax;
         log_w("STA band=%s channel=%u encryption=%s",
@@ -217,6 +269,7 @@ static void onNetworkEvent(arduino_event_id_t event) {
     break;
   case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
     log_w("STA disconnected");
+    sta_bssid[0] = '\0';
     break;
   case ARDUINO_EVENT_WIFI_STA_GOT_IP6:
     log_w("STA IPv6: link-local %s global %s",
