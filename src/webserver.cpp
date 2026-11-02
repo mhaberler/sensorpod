@@ -22,6 +22,8 @@ extern volatile bool ble_retain_undecoded;
 extern volatile bool ble_dedup_enabled;
 extern volatile uint32_t ble_dedup_age;
 
+String wifi_scan_json(bool start);
+
 WebServer http_server(80);
 
 // Helper to log incoming requests
@@ -147,6 +149,14 @@ void webserver_setup() {
                      "{\"status\":\"saved\",\"applied\":true}");
   });
 #endif
+
+  // WiFi scan, async: ?start=1 kicks off a scan, plain GET polls state.
+  http_server.on("/api/wifi-scan", HTTP_GET, []() {
+    log_request();
+    http_server.sendHeader("Cache-Control", "no-store");
+    http_server.send(200, "application/json",
+                     wifi_scan_json(http_server.hasArg("start")));
+  });
 
   // I2C bus scan. Synchronous - blocks loop() for the duration of the scan.
   http_server.on("/api/i2c-scan", HTTP_GET, []() {

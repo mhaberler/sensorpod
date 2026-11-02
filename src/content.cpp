@@ -322,6 +322,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
          "&amp; Restart</button>";
   out += "<p><small>Leave SSID empty and save to clear stored "
          "credentials.</small></p></form>";
+  out += "<button type='button' class='config-btn' onclick='scanWifi()'>Scan "
+         "WiFi</button> <small>Scan may briefly interrupt AP "
+         "clients.</small><div id='wifiScanResult'></div>";
 
   out +=
       "<script>"
@@ -378,6 +381,33 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       "'+d.error);return;}"
       "alert('Saved & applied');location.reload();})"
       ".catch(e=>alert('Error: '+e))}"
+      // WiFi scan: start, then poll every 500 ms (give up after ~15 s).
+      // Rows grouped by SSID (groups by best RSSI), APs within by RSSI.
+      "function wsEsc(v){return String(v).replace(/[&<>'\"]/g,"
+      "c=>'&#'+c.charCodeAt(0)+';')}"
+      "function pickWifi(s){document.getElementById('wifiSsid').value=s;"
+      "var p=document.getElementById('wifiPass');p.value='';p.focus()}"
+      "function scanWifi(){var el=document.getElementById('wifiScanResult');"
+      "el.textContent='Scanning...';var t0=Date.now();"
+      "function poll(q){fetch('/api/wifi-scan'+q).then(r=>r.json()).then(d=>{"
+      "if(d.status==='busy'){el.textContent='Busy, retry';return;}"
+      "if(d.status!=='done'){if(Date.now()-t0>15000){"
+      "el.textContent='Scan timed out';return;}"
+      "setTimeout(()=>poll(''),500);return;}"
+      "var g={};d.aps.forEach(a=>{(g[a.ssid]=g[a.ssid]||[]).push(a)});"
+      "var gs=Object.values(g);gs.forEach(l=>l.sort((x,y)=>y.rssi-x.rssi));"
+      "gs.sort((x,y)=>y[0].rssi-x[0].rssi);"
+      "if(gs.length===0){el.textContent='No networks found';return;}"
+      "var h='<table><tr><th></th><th>SSID</th><th>BSSID</th><th>RSSI</th>"
+      "<th>Ch</th><th>Security</th></tr>';"
+      "gs.forEach(l=>l.forEach(a=>{h+='<tr style=\"cursor:pointer\" "
+      "data-ssid=\"'+wsEsc(a.ssid)+'\" "
+      "onclick=\"pickWifi(this.dataset.ssid)\"><td>'+"
+      "(a.bssid===d.connected_bssid?'&#10003;':'')+'</td><td>'+wsEsc(a.ssid)+"
+      "'</td><td>'+a.bssid+'</td><td>'+a.rssi+'</td><td>'+a.ch+'</td><td>'+"
+      "a.auth+'</td></tr>'}));el.innerHTML=h+'</table>';})"
+      ".catch(e=>{el.textContent='Error: '+e})}"
+      "poll('?start=1')}"
       "function scanI2c(){"
       "var "
       "el=document.getElementById('i2cResult');el.textContent='Scanning...';"
