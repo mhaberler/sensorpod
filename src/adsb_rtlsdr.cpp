@@ -386,7 +386,7 @@ void adsb_rtlsdr_setup() {
       x = x * 1103515245u + 12345u;
       iq_bufs[0][k] = 124 + ((x >> 16) % 7); // noise around 127, +-3
     }
-    static mode_s_t bctx; // 32 KB ICAO cache: not on the stack
+    static mode_s_t bctx; // 8 KB ICAO cache: not on the stack
     mode_s_init(&bctx);
     DemodChunker bc;
     bc.mag = mag_chunk;
@@ -411,9 +411,11 @@ void adsb_rtlsdr_setup() {
   // Demod at priority 1 = Arduino loopTask (also core 1): they time-slice,
   // so under overload the buffer queue overruns (counted) instead of the
   // web UI/MQTT loop starving.
-  xTaskCreatePinnedToCore(rtlsdr_task, "adsb_rtlsdr", 8192, nullptr, 3, nullptr,
+  // Stacks from measured high-water marks (P4, R820T, streaming): reader
+  // ~2.5 KB peak incl. open/tune/logging, demod ~1.6 KB.
+  xTaskCreatePinnedToCore(rtlsdr_task, "adsb_rtlsdr", 5120, nullptr, 3, nullptr,
                           0);
-  xTaskCreatePinnedToCore(demod_task, "adsb_demod", 8192, nullptr, 1, nullptr,
+  xTaskCreatePinnedToCore(demod_task, "adsb_demod", 4096, nullptr, 1, nullptr,
                           portNUM_PROCESSORS > 1 ? 1 : 0);
   log_w("ADS-B RTL-SDR: waiting for dongle (%u Hz, %u S/s)", RTLSDR_FREQ,
         RTLSDR_RATE);

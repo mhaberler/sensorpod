@@ -11,10 +11,13 @@
 #include "nicrc.h"
 #include <ArduinoJson.h>
 #include <HardwareSerial.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/ringbuf.h>
 #include <freertos/task.h>
 #include <math.h>
+#include <memory>
+#include <span>
 #include <stddef.h>
 #include <string.h>
 
@@ -139,7 +142,9 @@ struct Aircraft {
   RawFrame raw[RF_COUNT];
 };
 
-static Aircraft aircraft_table[ADSB_MAX_AIRCRAFT];
+// ADSB_MAX_AIRCRAFT slots (~38 KB), allocated by adsb_setup() in PSRAM when
+// present, else internal RAM; empty (no slots) until then.
+static std::span<Aircraft> aircraft_table;
 
 static Aircraft *aircraft_find_or_create(uint32_t icao) {
   Aircraft *free_slot = nullptr;
@@ -317,6 +322,21 @@ void adsb_feed_rtlsdr(const char *hex, size_t len, float signal) {
 static void adsb_sweep_retained();
 
 void adsb_setup() {
+  size_t table_bytes = ADSB_MAX_AIRCRAFT * sizeof(Aircraft);
+  void *mem = heap_caps_malloc(table_bytes, MALLOC_CAP_SPIRAM);
+  if (!mem)
+    mem = malloc(table_bytes);
+  if (mem) {
+    // Value-init, like the former static array: zeroed, then member
+    // initializers applied.
+    Aircraft *a = static_cast<Aircraft *>(mem);
+    std::uninitialized_value_construct_n(a, ADSB_MAX_AIRCRAFT);
+    aircraft_table = std::span<Aircraft>(a, ADSB_MAX_AIRCRAFT);
+  } else {
+    log_e("ADS-B: no memory for aircraft table (%u bytes)",
+          (unsigned)table_bytes);
+  }
+
   adsb_publish_enabled = DeviceConfig::isAdsbPublishEnabled();
   adsb_ihex_enabled = DeviceConfig::isAdsbIhexEnabled();
 #ifdef ADSB_RTLSDR
@@ -755,7 +775,7 @@ static void adsb_dump_step(uint32_t now) {
     dump_idx = dump_sub = 0;
   }
   int budget = ADSB_DUMP_BUDGET;
-  while (budget > 0 && dump_idx < ADSB_MAX_AIRCRAFT) {
+  while (budget > 0 && dump_idx < aircraft_table.size()) {
     Aircraft &ac = aircraft_table[dump_idx];
     if (!ac.used || dump_sub > RF_COUNT) {
       dump_idx++;
@@ -781,7 +801,7 @@ static void adsb_dump_step(uint32_t now) {
       budget--;
     }
   }
-  if (dump_idx >= ADSB_MAX_AIRCRAFT) {
+  if (dump_idx >= aircraft_table.size()) {
     dump_active = false;
     log_i("ADS-B: table dump done (aircraft=%d ihex=%d)", dump_aircraft,
           dump_ihex);

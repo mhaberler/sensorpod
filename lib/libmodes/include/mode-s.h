@@ -38,8 +38,10 @@
 // Program state
 typedef struct {
   // Internal state
-  uint32_t icao_cache[sizeof(uint32_t) * MODE_S_ICAO_CACHE_LEN *
-                      2]; // Recently seen ICAO addresses cache
+  // Recently seen ICAO addresses cache: addr / timestamp pair per entry.
+  // Patch: sensorpod, was [sizeof(uint32_t) * LEN * 2] (dump1090's malloc()
+  // byte count used as an element count).
+  uint32_t icao_cache[MODE_S_ICAO_CACHE_LEN * 2];
 
   // Configuration
   int fix_errors; // Single bit error correction if true

@@ -7,7 +7,9 @@
 
 #define MODE_S_ICAO_CACHE_TTL 60 // Time to live of cached addresses.
 
-static uint16_t maglut[129 * 129 * 2];
+// Patch: sensorpod, was [129 * 129 * 2] (dump1090's malloc() byte count used
+// as an element count); indices are i * 129 + q with i, q <= 128.
+static uint16_t maglut[129 * 129];
 static int maglut_initialized = 0;
 
 // =============================== Initialization ===========================
