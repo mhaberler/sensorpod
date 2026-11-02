@@ -152,6 +152,15 @@ static void session(uint8_t addr, uint16_t vid, uint16_t pid) {
   int tuner = 0, force_bt = 0;
   rtlsdr_get_dongle_info(dev, i.model, sizeof(i.model), &tuner, &force_bt);
   sanitize(i.model);
+  if (tuner == RTLSDR_TUNER_UNKNOWN) {
+    // The driver would fall back to direct sampling (HF only): nothing at
+    // 1090 MHz, and taking over would silence the UART source for nothing.
+    log_e("ADS-B RTL-SDR: %s at addr %u: no supported tuner, ignored; UART "
+          "input stays active",
+          i.model, addr);
+    rtlsdr_close(dev);
+    return;
+  }
   char serial[256] = ""; // driver writes up to 256 bytes
   rtlsdr_get_usb_strings(dev, nullptr, nullptr, serial);
   strlcpy(i.serial, serial, sizeof(i.serial));

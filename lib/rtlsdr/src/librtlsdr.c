@@ -1443,14 +1443,6 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint8_t index, usb_host_client_handle_t 
     /* Probe tuners */
     rtlsdr_set_i2c_repeater(dev, 1);
 
-    // reg = rtlsdr_i2c_read_reg(dev, E4K_I2C_ADDR, E4K_CHECK_ADDR);
-    // if (reg == E4K_CHECK_VAL)
-    // {
-    //     fprintf(stderr, "Found Elonics E4000 tuner\n");
-    //     dev->tuner_type = RTLSDR_TUNER_E4000;
-    //     goto found;
-    // }
-
     // reg = rtlsdr_i2c_read_reg(dev, FC0013_I2C_ADDR, FC0013_CHECK_ADDR);
     // if (reg == FC0013_CHECK_VAL)
     // {
@@ -1476,6 +1468,17 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint8_t index, usb_host_client_handle_t 
         if (rtlsdr_check_dongle_model(dev, "RTLSDRBlog", "Blog V4"))
             ESP_LOGI(TAG_ADSB, "RTL-SDR Blog V4 detected");
         dev->tuner_type = RTLSDR_TUNER_R828D;
+        goto found;
+    }
+
+    /* sensorpod: E4000 probe re-enabled (e.g. NooElec SMArTee XTR) and moved
+     * after the R82xx probes, so R820T/R828D dongles never see this extra,
+     * NACKed I2C read. */
+    reg = rtlsdr_i2c_read_reg(dev, E4K_I2C_ADDR, E4K_CHECK_ADDR);
+    if (reg == E4K_CHECK_VAL)
+    {
+        ESP_LOGI(TAG_ADSB, "Found Elonics E4000 tuner (I2C 0x%02x)", E4K_I2C_ADDR);
+        dev->tuner_type = RTLSDR_TUNER_E4000;
         goto found;
     }
 
