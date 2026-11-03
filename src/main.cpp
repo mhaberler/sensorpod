@@ -103,7 +103,7 @@ bool onImprovCustomConnect(const char *ssid, const char *password) {
 }
 
 void startImprovSerialProvisioning() {
-  improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "ImprovWiFiLib",
+  improvSerial.setDeviceInfo(IMPROV_CHIP_FAMILY, "ImprovWiFiLib",
                              IMPROV_WIFI_LIBRARY_VERSION, hostName.c_str(),
                              "http://{LOCAL_IPV4}");
   improvSerial.onImprovError(onImprovWiFiErrorCb);
