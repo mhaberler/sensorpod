@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SensorPod – Install firmware</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; color: #222; }
+    h1 { margin-bottom: 0.2rem; }
+    .muted { color: #666; }
+    label { display: block; margin: 1.5rem 0 0.4rem; font-weight: 600; }
+    select { font-size: 1rem; padding: 0.4rem; width: 100%; }
+    .install { margin: 1.5rem 0; }
+    code { background: #f2f2f2; padding: 0 0.2rem; }
+  </style>
+</head>
+<body>
+  <h1>SensorPod</h1>
+  <p class="muted">Firmware <span id="version">…</span> — flash from the browser over USB (Chrome / Edge, desktop).</p>
+
+  <label for="board">Board</label>
+  <select id="board"></select>
+
+  <div class="install">
+    <esp-web-install-button id="install">
+      <span slot="unsupported">Your browser lacks Web Serial — use desktop Chrome or Edge.</span>
+      <span slot="not-allowed">Page must be served over HTTPS.</span>
+    </esp-web-install-button>
+  </div>
+
+  <p>After flashing, WiFi can be set up right here (Improv). Otherwise the device runs a WPA2 AP whose SSID and password are both <code>&lt;hostname&gt;.local</code>.</p>
+  <p>Erasing wipes stored WiFi credentials and settings; skip it to keep them on update.</p>
+  <p><a href="https://github.com/mhaberler/sensorpod">Source &amp; docs</a> · <a href="https://github.com/mhaberler/sensorpod/releases">All releases</a></p>
+
+  <script>
+    const sel = document.getElementById("board");
+    const btn = document.getElementById("install");
+    fetch("boards.json").then(r => r.json()).then(({ version, boards }) => {
+      document.getElementById("version").textContent = version;
+      for (const b of boards) {
+        const o = document.createElement("option");
+        o.value = b.manifest;
+        o.textContent = `${b.name} (${b.env}, ${b.chip})`;
+        sel.appendChild(o);
+      }
+      const pick = () => btn.setAttribute("manifest", sel.value);
+      sel.addEventListener("change", pick);
+      pick();
+    });
+  </script>
+</body>
+</html>

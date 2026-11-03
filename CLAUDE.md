@@ -262,7 +262,10 @@ multi-chip `#ifdef` branches.
 
 - `.github/workflows/build-firmware.yml` — manual dispatch, matrix over
   `[ci].envs` (or a JSON array input override).
-- `.github/workflows/release.yml` — tag-driven release builds.
+- `.github/workflows/release.yml` — tag-driven release builds. `pages` job
+  deploys ESP Web Tools install page (https://mhaberler.github.io/sensorpod/):
+  `site/index.html` + `scripts/build_pages_site.py` → one manifest per env;
+  chipFamily from `BUILD_MCU` via per-env `<env>.meta.json` sidecar.
 
 Both parse `platformio.ini` with Python `configparser`; keep the `[ci]` section
 syntax valid even when adding comments.

@@ -155,6 +155,8 @@ flash and monitor in one step: `pio run -e <env> -t upload -t monitor`.
 
 ## Pre-built firmware & updates
 
+**Easiest:** flash from the browser at https://mhaberler.github.io/sensorpod/ (desktop Chrome/Edge, USB) — pick your board, click Connect; WiFi can be provisioned right after flashing via Improv.
+
 Pre-built images can be found at https://github.com/mhaberler/sensorpod/releases
 
 Download the `sensorpod_<env>_firmware_<latest version>.bin` merged image (bootloader + partition table + app) and flash it over USB with [ESPConnect](https://thelastoutpostworkshop.github.io/ESPConnect/) (see also https://github.com/thelastoutpostworkshop/ESPConnect).

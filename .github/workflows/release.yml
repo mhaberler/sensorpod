@@ -76,11 +76,27 @@ jobs:
           done
           exit 1
 
+      - name: Write board metadata for install page
+        env:
+          PIO_ENV: ${{ matrix.platformio_env }}
+        run: |
+          python - <<'PY2'
+          import json, os, re
+          hdr = open("include/build_info.hpp").read()
+          get = lambda k: (re.search(rf'#define {k} "([^"]*)"', hdr) or [None, None])[1]
+          env = os.environ["PIO_ENV"]
+          meta = {"env": env, "mcu": get("BUILD_MCU"), "board_name": get("BUILD_BOARD_NAME")}
+          json.dump(meta, open(f"firmware/{env}.meta.json", "w"))
+          print(meta)
+          PY2
+
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.platformio_env }}
-          path: firmware/*.bin
+          path: |
+            firmware/*.bin
+            firmware/*.meta.json
           if-no-files-found: error
 
   release:
@@ -101,3 +117,32 @@ jobs:
         with:
           files: firmware/*.bin
           generate_release_notes: true
+
+  pages:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: firmware
+          merge-multiple: true
+
+      - name: Assemble ESP Web Tools install site
+        run: python scripts/build_pages_site.py firmware site _site "${GITHUB_REF_NAME}"
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
