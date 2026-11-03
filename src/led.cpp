@@ -1,167 +1,97 @@
+// Status LED via the StatusLed library: a dedicated task drives the LED, so
+// blinkLed() and updateLed() never block loop() (or Improv/BLE callbacks on
+// other tasks). Colors and timings match the previous blocking implementation.
 #include "led.hpp"
 #include <Arduino.h>
+#include <StatusLed.h>
+#include <StatusLedAdapters.h>
 
 #if __has_include(<M5Unified.h>)
 #define HAS_M5UNIFIED
 #include <M5Unified.h>
 #endif
 
-static LEDState _led_state = LED_OFF;
-static unsigned long _led_last_toggle = 0;
-const unsigned long LED_FAST_BLINK_INTERVAL = 200; // WiFi down
-const unsigned long LED_SLOW_BLINK_INTERVAL = 500; // Broker down
+using namespace statusled;
+
+static StatusLed _led;
+
+// Status patterns (same as the former ledLoop() state machine)
+constexpr Step PAT_SOLID[] = {{0x00FF00, 1000}};               // green
+constexpr Step PAT_SLOW[] = {{0xFF8800, 500}, {0, 500}};       // broker down
+constexpr Step PAT_FAST[] = {{0xFF0000, 200}, {0, 200}};       // WiFi down
+constexpr Step PAT_OFF[] = {{0, 1000}};
 
 #if defined(LED_SCENARIO_RGB)
-#include <Adafruit_NeoPixel.h>
 #if defined(RGB_LED_TYPE_SK6812)
 #define _LED_NEO_TYPE (NEO_GRBW + NEO_KHZ800)
 #else
 #define _LED_NEO_TYPE (NEO_GRB + NEO_KHZ800)
 #endif
-
-static Adafruit_NeoPixel _led_pixel(1, RGB_LED_PIN, _LED_NEO_TYPE);
+#if !defined(RGB_POWER_PIN)
+#define RGB_POWER_PIN -1
+#endif
+#if !defined(RGB_POWER_ENABLE)
+#define RGB_POWER_ENABLE HIGH
+#endif
+static NeoPixelLed _hw(RGB_LED_PIN, _LED_NEO_TYPE, 1, RGB_POWER_PIN,
+                       RGB_POWER_ENABLE);
 
 void ledSetup() {
-#if defined(RGB_POWER_PIN)
-  pinMode(RGB_POWER_PIN, OUTPUT);
-  digitalWrite(RGB_POWER_PIN, RGB_POWER_ENABLE);
-#endif
-  _led_pixel.begin();
-  _led_pixel.show();
-}
-
-void blinkLed(int d, int times, uint32_t color) {
-  for (int j = 0; j < times; j++) {
-    _led_pixel.setPixelColor(0, color);
-    _led_pixel.show();
-    delay(d);
-    _led_pixel.setPixelColor(0, 0);
-    _led_pixel.show();
-    delay(d);
-  }
+  _hw.begin();
+  _led.begin(NeoPixelLed::write, &_hw);
 }
 
 #elif defined(LED_SCENARIO_SINGLE)
 
 #if defined(LED_ACTIVE_LOW)
-constexpr int _LED_ON = LOW;
-constexpr int _LED_OFF = HIGH;
+static GpioLed _hw{LED_PIN, true};
 #else
-constexpr int _LED_ON = HIGH;
-constexpr int _LED_OFF = LOW;
+static GpioLed _hw{LED_PIN, false};
 #endif
-
-void ledSetup() { pinMode(LED_PIN, OUTPUT); }
-
-void blinkLed(int d, int times, uint32_t color) {
-  (void)color;
-  for (int j = 0; j < times; j++) {
-    digitalWrite(LED_PIN, _LED_ON);
-    delay(d);
-    digitalWrite(LED_PIN, _LED_OFF);
-    delay(d);
-  }
-}
-
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-
-static bool _m5_led_on = false;
 
 void ledSetup() {
-  // M5.begin() already configures the power LED; nothing to do here.
+  _hw.begin();
+  _led.begin(GpioLed::write, &_hw);
 }
 
-void blinkLed(int d, int times, uint32_t color) {
-  (void)color;
-  for (int j = 0; j < times; j++) {
-    M5.Power.setLed(255);
-    delay(d);
-    M5.Power.setLed(0);
-    delay(d);
-  }
-  _m5_led_on = false;
+#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
+
+// Full on/off like before (the adapter's luminance mapping would dim red/orange).
+static void m5LedWrite(uint32_t rgb, void *) { M5.Power.setLed(rgb ? 255 : 0); }
+
+void ledSetup() {
+  // M5.begin() already configured the power LED.
+  _led.begin(m5LedWrite);
 }
 
 #else
 
-void ledSetup() {}
+void ledSetup() {} // no LED: StatusLed not started, calls below are no-ops
 
+#endif
+
+// Non-blocking: queues a one-shot event (times x on d ms / off d ms).
 void blinkLed(int d, int times, uint32_t color) {
-  (void)d;
-  (void)times;
-  (void)color;
+  if (times > 0 && d > 0)
+    _led.blink(color, d > 0xFFFF ? 0xFFFF : d, times > 255 ? 255 : times);
 }
 
-#endif
-
-// LED status feedback: WiFi/broker connection state
 void updateLed(LEDState state) {
-  if (state != _led_state) {
-    _led_state = state;
-    _led_last_toggle = millis();
-  }
-}
-
-void ledLoop() {
-  unsigned long now = millis();
-
-  switch (_led_state) {
+  switch (state) {
   case LED_OFF:
-#if defined(LED_SCENARIO_RGB)
-    _led_pixel.setPixelColor(0, 0);
-    _led_pixel.show();
-#elif defined(LED_SCENARIO_SINGLE)
-    digitalWrite(LED_PIN, _LED_OFF);
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-    M5.Power.setLed(0);
-    _m5_led_on = false;
-#endif
+    _led.setStatus(pattern(PAT_OFF));
     break;
-
   case LED_SOLID:
-#if defined(LED_SCENARIO_RGB)
-    _led_pixel.setPixelColor(0, 0x00FF00); // Green
-    _led_pixel.show();
-#elif defined(LED_SCENARIO_SINGLE)
-    digitalWrite(LED_PIN, _LED_ON);
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-    M5.Power.setLed(255);
-    _m5_led_on = true;
-#endif
+    _led.setStatus(pattern(PAT_SOLID));
     break;
-
-  case LED_SLOW_BLINK: // Broker down
-    if (now - _led_last_toggle > LED_SLOW_BLINK_INTERVAL) {
-#if defined(LED_SCENARIO_RGB)
-      uint32_t color =
-          (_led_pixel.getPixelColor(0) == 0) ? 0xFF8800 : 0; // Orange/off
-      _led_pixel.setPixelColor(0, color);
-      _led_pixel.show();
-#elif defined(LED_SCENARIO_SINGLE)
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-      _m5_led_on = !_m5_led_on;
-      M5.Power.setLed(_m5_led_on ? 255 : 0);
-#endif
-      _led_last_toggle = now;
-    }
+  case LED_SLOW_BLINK:
+    _led.setStatus(pattern(PAT_SLOW));
     break;
-
-  case LED_FAST_BLINK: // WiFi down
-    if (now - _led_last_toggle > LED_FAST_BLINK_INTERVAL) {
-#if defined(LED_SCENARIO_RGB)
-      uint32_t color =
-          (_led_pixel.getPixelColor(0) == 0) ? 0xFF0000 : 0; // Red/off
-      _led_pixel.setPixelColor(0, color);
-      _led_pixel.show();
-#elif defined(LED_SCENARIO_SINGLE)
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-#elif defined(LED_SCENARIO_SINGLE_M5UNIFIED)
-      _m5_led_on = !_m5_led_on;
-      M5.Power.setLed(_m5_led_on ? 255 : 0);
-#endif
-      _led_last_toggle = now;
-    }
+  case LED_FAST_BLINK:
+    _led.setStatus(pattern(PAT_FAST));
     break;
   }
 }
+
+// Kept for compatibility: the StatusLed task does the timing now.
+void ledLoop() {}
