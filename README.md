@@ -1,5 +1,7 @@
 # SensorPod
 
+[![Install via browser](https://img.shields.io/badge/install-ESP%20Web%20Tools-blue)](https://mhaberler.github.io/sensorpod/)
+
 A PlatformIO-based firmware for ESP32 sensor devices with dual-role MQTT (Broker/Client), WiFi, and I2C sensor integration.
 
 It is a demonstration how to use [Sensor Logger](https://www.tszheichoi.com/sensorlogger) to record sensors which are beyond the capabilities of mobiles. In this example we use a time-of-flight distance sensor. SensorPod can run as either a **local MQTT broker** (default) or as an **MQTT client** connecting to a discovered remote broker (switchable via web UI without reflash).
