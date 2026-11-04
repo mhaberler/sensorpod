@@ -224,12 +224,24 @@ void webserver_setup() {
   });
 #endif
 
-  // CPU load (see cpuload.hpp), polled by the web UI every 5 s. Local data
+  // CPU load (see cpuload.hpp) + live memory, polled by the web UI every 5 s.
+  // Local data
   // only - no hosted RPC; runs in the loop() task like cpuload_loop().
   http_server.on("/api/cpuload", HTTP_GET, []() {
     const CpuLoad &c = cpuload_get();
     JsonDocument doc;
     doc["valid"] = c.valid;
+    // Live memory, sampled now (not per CPU window); refreshes the Memory
+    // section on the same 5 s poll.
+    JsonObject mem = doc["mem"].to<JsonObject>();
+    mem["free"] = ESP.getFreeHeap();
+    mem["min_free"] = ESP.getMinFreeHeap();
+    mem["max_alloc"] = ESP.getMaxAllocHeap();
+    mem["total"] = ESP.getHeapSize();
+    if (psramFound()) {
+      mem["psram_free"] = ESP.getFreePsram();
+      mem["psram_total"] = ESP.getPsramSize();
+    }
     if (c.valid) {
       doc["window_ms"] = c.window_ms;
       JsonArray cores = doc["cores"].to<JsonArray>();

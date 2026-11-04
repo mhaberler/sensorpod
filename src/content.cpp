@@ -527,16 +527,30 @@ void sysinfo_html(String &out, bool is_broker_mode) {
       ".catch(e=>{document.getElementById('acTable').textContent='Error: '+e})}"
       "if(document.getElementById('acBox')){loadAc();setInterval(loadAc,2000);"
       "document.getElementById('acBox').addEventListener('toggle',loadAc)}"
-      // CPU load table: poll /api/cpuload every 5 s (CPULOAD_INTERVAL_MS)
-      // while the <details> is open and the tab visible. The section comes
-      // after this script, so start on window load. On fetch error keep
-      // the last table and mark the per-core line stale.
+      // CPU load + memory: poll /api/cpuload every 5 s (CPULOAD_INTERVAL_MS)
+      // while the tab is visible. Memory section always updates; the CPU
+      // table only while its <details> is open. The sections come after
+      // this script, so start on window load. On fetch error keep the last
+      // values and mark the per-core line stale.
       "var cpuLine='';"
+      "function setT(i,v){var "
+      "e=document.getElementById(i);if(e)e.textContent=v}"
+      "function updMem(m){var q=(a,t)=>t?Math.floor(100*a/t):0,"
+      "pf=q(m.free,m.total),e;"
+      "setT('memFree',m.free);setT('memPct',pf);setT('memMin',m.min_free);"
+      "setT('memMax',m.max_alloc);"
+      "if(e=document.getElementById('memBar'))e.value=pf;"
+      "if(e=document.getElementById('memTick'))"
+      "e.style.left=q(m.min_free,m.total)+'%';"
+      "if(m.psram_total){var pp=q(m.psram_free,m.psram_total);"
+      "setT('psFree',m.psram_free);setT('psPct',pp);"
+      "if(e=document.getElementById('psBar'))e.value=pp}}"
       "function loadCpu(){var b=document.getElementById('cpuBox');"
-      "if(!b||!b.open||document.hidden)return;"
+      "if(!b||document.hidden)return;"
       "var p=document.getElementById('cpuCores'),"
       "tb=document.getElementById('cpuTable');"
       "fetch('/api/cpuload').then(r=>r.json()).then(d=>{"
+      "if(d.mem)updMem(d.mem);if(!b.open)return;"
       "if(!d.valid){p.textContent=cpuLine='collecting (first window)';"
       "tb.innerHTML='';return;}"
       "cpuLine=d.cores.map((v,k)=>'core '+k+': '+v.toFixed(1)+' %').join(', ')"
@@ -786,15 +800,18 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     unsigned hwm_pct =
         heap_total ? (unsigned)(100ULL * heap_min_free / heap_total) : 0;
     appendf(out, "<li>Heap total: %u</li>", (unsigned)heap_total);
-    appendf(out, "<li>Heap free: %u (%u%% free)", (unsigned)heap_free,
-            pct_free);
     appendf(out,
-            " <span class='barwrap'><progress value='%u' max='100'>"
-            "</progress><span class='tick' style='left:%u%%'></span>"
-            "</span></li>",
+            "<li>Heap free: <span id='memFree'>%u</span> "
+            "(<span id='memPct'>%u</span>%% free)",
+            (unsigned)heap_free, pct_free);
+    appendf(out,
+            " <span class='barwrap'><progress id='memBar' value='%u' "
+            "max='100'></progress><span id='memTick' class='tick' "
+            "style='left:%u%%'></span></span></li>",
             pct_free, hwm_pct);
-    appendf(out, "<li>Heap min free (HWM): %u</li>", (unsigned)heap_min_free);
-    appendf(out, "<li>Heap max alloc: %u</li>",
+    appendf(out, "<li>Heap min free (HWM): <span id='memMin'>%u</span></li>",
+            (unsigned)heap_min_free);
+    appendf(out, "<li>Heap max alloc: <span id='memMax'>%u</span></li>",
             (unsigned)ESP.getMaxAllocHeap());
   }
   if (psramFound()) {
@@ -803,9 +820,11 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     unsigned psram_pct_free =
         psram_total ? (unsigned)(100ULL * psram_free / psram_total) : 0;
     appendf(out, "<li>PSRAM size: %u</li>", (unsigned)psram_total);
-    appendf(out, "<li>PSRAM free: %u (%u%% free)", (unsigned)psram_free,
-            psram_pct_free);
-    appendf(out, " <progress value='%u' max='100'></progress></li>",
+    appendf(out,
+            "<li>PSRAM free: <span id='psFree'>%u</span> "
+            "(<span id='psPct'>%u</span>%% free)",
+            (unsigned)psram_free, psram_pct_free);
+    appendf(out, " <progress id='psBar' value='%u' max='100'></progress></li>",
             psram_pct_free);
   }
   out += "</ul>";

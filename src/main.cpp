@@ -225,10 +225,12 @@ void loop() {
   unsigned long now = millis();
   button_loop();
 
-  // CPU load: new interval every CPULOAD_INTERVAL_MS -> topic "cpu" (top
-  // tasks; full table on the web UI). Compact rows keep it under PicoMQTT's
-  // default 1 KiB client message size.
-  if (cpuload_loop() && !hosted_update_busy()) {
+  // CPU load: new interval every CPULOAD_INTERVAL_MS. Always sampled (web
+  // UI, status cpu0/cpu1); topic "cpu" (top tasks) only with -DTOPIC_CPU.
+  // Compact rows keep it under PicoMQTT's default 1 KiB client message size.
+  bool cpu_new = cpuload_loop();
+#ifdef TOPIC_CPU
+  if (cpu_new && !hosted_update_busy()) {
     const CpuLoad &c = cpuload_get();
     JsonDocument doc;
     doc["window_ms"] = c.window_ms;
@@ -247,6 +249,9 @@ void loop() {
     serializeJson(doc, payload);
     mqtt_publish("cpu", payload.c_str());
   }
+#else
+  (void)cpu_new;
+#endif
   if (ble_scan_enabled && blescanner_started())
     blescanner_loop();
 #if defined(HAS_M5UNIFIED)
@@ -275,6 +280,8 @@ void loop() {
     doc["uptime"] = now / 1000;
     doc["boot"] = boot_id;
     doc["cpu_temperature"] = temperatureRead();
+    doc["heap_free"] = ESP.getFreeHeap();
+    doc["heap_min_free"] = ESP.getMinFreeHeap();
     if (cpuload_get().valid) {
       const CpuLoad &c = cpuload_get();
       for (int k = 0; k < c.cores; k++)
