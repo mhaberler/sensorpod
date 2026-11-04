@@ -149,6 +149,12 @@ struct DedupEntry {
   int64_t seen_us;
 };
 static std::map<std::string, DedupEntry> dedup_map;
+// Cap on tracked MACs; when full, new MACs pass through undeduplicated.
+#ifdef BOARD_HAS_PSRAM
+#define DEDUP_MAX_ENTRIES 512
+#else
+#define DEDUP_MAX_ENTRIES 64
+#endif
 static int64_t dedup_last_sweep_us = 0;
 
 // Returns true if this advertisement is a young duplicate and should be
@@ -180,6 +186,9 @@ static bool dedupDrop(const std::string &mac, const uint8_t *payload,
       memcmp(it->second.payload.data(), payload, payloadLen) == 0) {
     return true;
   }
+
+  if (it == dedup_map.end() && dedup_map.size() >= DEDUP_MAX_ENTRIES)
+    return false;
 
   DedupEntry &e = dedup_map[mac];
   e.payload.assign(payload, payload + payloadLen);
