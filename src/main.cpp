@@ -29,6 +29,10 @@
 #if __has_include("build_info.hpp")
 #include "build_info.hpp"
 #endif
+#include "fw_version.hpp"
+#ifndef SGO_DEFAULT_REPO
+#define SGO_DEFAULT_REPO "sensorpod"
+#endif
 
 // start BLE provisioning service only afeter wifi connect failed
 // p4 takes longer time to get set up
@@ -103,9 +107,8 @@ bool onImprovCustomConnect(const char *ssid, const char *password) {
 }
 
 void startImprovSerialProvisioning() {
-  improvSerial.setDeviceInfo(IMPROV_CHIP_FAMILY, "ImprovWiFiLib",
-                             IMPROV_WIFI_LIBRARY_VERSION, hostName.c_str(),
-                             "http://{LOCAL_IPV4}");
+  improvSerial.setDeviceInfo(IMPROV_CHIP_FAMILY, SGO_DEFAULT_REPO, FW_VERSION,
+                             hostName.c_str(), "http://{LOCAL_IPV4}");
   improvSerial.onImprovError(onImprovWiFiErrorCb);
   improvSerial.onImprovConnected(onImprovWiFiConnectedCb);
   improvSerial.setCustomConnectWiFi(onImprovCustomConnect);

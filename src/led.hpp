@@ -11,4 +11,5 @@ enum LEDState {
 void ledSetup();
 void blinkLed(int d, int times, uint32_t color = 0xFFFFFF);
 void updateLed(LEDState state);
+void ledIdentify(); // attention pattern, e.g. for Improv "identify"
 void ledLoop();

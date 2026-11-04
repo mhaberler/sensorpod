@@ -21,6 +21,11 @@ constexpr Step PAT_SLOW[] = {{0xFF8800, 500}, {0, 500}};       // broker down
 constexpr Step PAT_FAST[] = {{0xFF0000, 200}, {0, 200}};       // WiFi down
 constexpr Step PAT_OFF[] = {{0, 1000}};
 
+// Identify: white/blue alternating with off phases (5 Hz blink on
+// single-color LEDs), played 8x = 3.2 s, then the status pattern resumes.
+constexpr Step PAT_IDENTIFY[] = {
+    {0xFFFFFF, 100}, {0, 100}, {0x0000FF, 100}, {0, 100}};
+
 #if defined(LED_SCENARIO_RGB)
 #if defined(RGB_LED_TYPE_SK6812)
 #define _LED_NEO_TYPE (NEO_GRBW + NEO_KHZ800)
@@ -92,6 +97,8 @@ void updateLed(LEDState state) {
     break;
   }
 }
+
+void ledIdentify() { _led.event(pattern(PAT_IDENTIFY, 8)); }
 
 // Kept for compatibility: the StatusLed task does the timing now.
 void ledLoop() {}

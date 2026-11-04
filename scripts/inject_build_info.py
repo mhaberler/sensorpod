@@ -10,7 +10,12 @@
 #   BUILD_HOST           always — build origin: "user@host" locally,
 #                        "actor@runner (GitHub Actions)" in CI
 #   BUILD_REPO           CI only — "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-#   BUILD_TAG            CI tag builds — $GITHUB_REF_NAME (matches v?N.N.N…)
+#   BUILD_TAG            CI tag builds — $GITHUB_REF_NAME (matches v?N.N.N…);
+#                        local builds — the tag, if HEAD is exactly on one and
+#                        the tracked tree is clean
+#   BUILD_DESCRIBE       when in a git repo — `git describe --tags --always
+#                        --dirty`, e.g. "v0.0.42-1-g82d6651-dirty" (just the
+#                        SHA in shallow clones without tags)
 #   BUILD_FIRMWARE_URI   CI tag builds — release asset URL for the merged bin
 #   BUILD_ENV            always — PlatformIO env name, e.g. "m5stack-nanoc6"
 #   BUILD_BOARD          always — board ID, e.g. "esp32-c6-devkitm-1"
@@ -97,6 +102,17 @@ def inject_sgo_defaults():
     define_str_if_unset("SGO_DEFAULT_BIN", ota_bin_filename(env))
 
 
+def git(*args):
+    try:
+        return (
+            subprocess.check_output(["git", *args], stderr=subprocess.DEVNULL)
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return ""
+
+
 def build_host():
     # CI: prefer GitHub-provided identity over the ephemeral runner's
     # local hostname/user (which are generic, e.g. "runner@fv-az...").
@@ -151,6 +167,18 @@ def inject():
             filename = merged_bin_filename(env)
             uri = f"{github_server}/{github_repository}/releases/download/{tag}/{filename}"
             define_str("BUILD_FIRMWARE_URI", uri)
+
+    # Local build exactly on a tag, with a clean tracked tree: it *is* that
+    # release, so report the tag like a CI tag build does.
+    if "BUILD_TAG" not in build_info_macros:
+        exact = git("describe", "--tags", "--exact-match")
+        if exact and not git("status", "--porcelain", "--untracked-files=no"):
+            define_str("BUILD_TAG", exact)
+
+    # Always: position relative to the last tag, e.g. "v0.0.42-1-g82d6651-dirty"
+    describe = git("describe", "--tags", "--always", "--dirty")
+    if describe:
+        define_str("BUILD_DESCRIBE", describe)
 
     # Board & environment metadata
     define_str("BUILD_ENV", env.subst("$PIOENV"))

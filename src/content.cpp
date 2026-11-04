@@ -31,11 +31,7 @@ bool hosted_update_busy();
 #include "build_info.hpp"
 #endif
 
-#ifdef BUILD_TAG
-#define FW_VERSION BUILD_TAG
-#else
-#define FW_VERSION "n/a"
-#endif
+#include "fw_version.hpp"
 
 #ifndef BUILD_SHA
 #define BUILD_SHA "unknown"
