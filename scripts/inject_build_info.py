@@ -59,6 +59,12 @@ env: Any = DefaultEnvironment()
 build_info_macros: dict[str, str] = {}
 env["BUILD_INFO_MACROS"] = build_info_macros
 
+# include/ holds only the gitignored header, so it is missing on a fresh
+# checkout (CI). PlatformIO adds it to CPPPATH only if it exists when the
+# build is set up - too early for inject_lib_versions.py's makedirs - and
+# __has_include("build_info.hpp") then silently falls back to "unknown".
+os.makedirs(env.subst("$PROJECT_INCLUDE_DIR"), exist_ok=True)
+
 
 def define_str(name, value):
     build_info_macros[name] = value
