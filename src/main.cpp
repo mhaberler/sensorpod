@@ -14,6 +14,7 @@
 #include "i2c.hpp"
 #include "led.hpp"
 #include "listenv.hpp"
+#include "memdiag.hpp"
 #include "mqtt_device.hpp"
 #include "reset_reason.hpp"
 #include "vl53l0x.hpp"
@@ -145,6 +146,7 @@ void setup() {
     delay(10);
   }
   reset_reason_capture_and_log();
+  memdiag_init();
   listEnv();
   hostName = WiFi.getHostname();
   hostName.toLowerCase();
@@ -285,6 +287,8 @@ void loop() {
     doc["cpu_temperature"] = temperatureRead();
     doc["heap_free"] = ESP.getFreeHeap();
     doc["heap_min_free"] = ESP.getMinFreeHeap();
+    doc["heap_max_alloc"] = ESP.getMaxAllocHeap();
+    doc["alloc_fail"] = memdiag_alloc_fail_now().count;
     if (cpuload_get().valid) {
       const CpuLoad &c = cpuload_get();
       for (int k = 0; k < c.cores; k++)

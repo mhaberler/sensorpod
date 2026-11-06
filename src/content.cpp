@@ -13,6 +13,7 @@
 #include "mdns.h"
 #include "mdns_client.hpp"
 #include "mdns_state.hpp"
+#include "memdiag.hpp"
 #include "mqtt.hpp"
 #include "mqtt_client.hpp"
 #include "reset_reason.hpp"
@@ -733,6 +734,9 @@ void sysinfo_html(String &out, bool is_broker_mode) {
   appendf(out, "<li>IDF: %s</li>", esp_app_get_description()->idf_ver);
   appendf(out, "<li>MAC: %s</li>", WiFi.macAddress().c_str());
   appendf(out, "<li>Reset reason: %s</li>", reset_reason_name());
+  if (memdiag_coredump()[0])
+    appendf(out, "<li>Coredump in flash: <code>%s</code></li>",
+            memdiag_coredump());
   appendf(out, "<li>Uptime: %lus</li>", (unsigned long)(millis() / 1000));
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
   if (hostedIsInitialized() && !hosted_update_busy()) {
@@ -810,6 +814,29 @@ void sysinfo_html(String &out, bool is_broker_mode) {
     appendf(out, "<li>Heap max alloc: <span id='memMax'>%u</span></li>",
             (unsigned)ESP.getMaxAllocHeap());
   }
+  appendf(
+      out, "<li>DMA free: %u, min free: %u, max alloc: %u</li>",
+      (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+      (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_DMA |
+                                                MALLOC_CAP_INTERNAL),
+      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA |
+                                                 MALLOC_CAP_INTERNAL));
+  {
+    const AllocFailInfo &n = memdiag_alloc_fail_now();
+    const AllocFailInfo &p = memdiag_alloc_fail_prev();
+    appendf(out, "<li>Failed allocs: %u", (unsigned)n.count);
+    if (n.count)
+      appendf(out, " (last %u bytes caps=0x%08x task=%s in %s at %us)",
+              (unsigned)n.size, (unsigned)n.caps, n.task, n.func,
+              (unsigned)n.uptime_s);
+    out += "</li>";
+    if (p.count)
+      appendf(out,
+              "<li>Failed allocs previous boot: %u (last %u bytes "
+              "caps=0x%08x task=%s in %s at %us)</li>",
+              (unsigned)p.count, (unsigned)p.size, (unsigned)p.caps, p.task,
+              p.func, (unsigned)p.uptime_s);
+  }
   if (psramFound()) {
     uint32_t psram_total = ESP.getPsramSize();
     uint32_t psram_free = ESP.getFreePsram();
@@ -822,6 +849,8 @@ void sysinfo_html(String &out, bool is_broker_mode) {
             (unsigned)psram_free, psram_pct_free);
     appendf(out, " <progress id='psBar' value='%u' max='100'></progress></li>",
             psram_pct_free);
+    appendf(out, "<li>PSRAM min free: %u, max alloc: %u</li>",
+            (unsigned)ESP.getMinFreePsram(), (unsigned)ESP.getMaxAllocPsram());
   }
   out += "</ul>";
 
@@ -900,6 +929,7 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_str(out, "mac", WiFi.macAddress().c_str(), first);
   json_kv_str(out, "reset_reason", reset_reason_name(), first);
   json_kv_u(out, "reset_reason_code", (uint32_t)reset_reason_code(), first);
+  json_kv_str(out, "coredump", memdiag_coredump(), first);
   json_kv_str(out, "arduino_ver", ESP_ARDUINO_VERSION_STR, first);
   json_kv_str(out, "idf_ver", esp_app_get_description()->idf_ver, first);
 #ifdef BOARD_HAS_SDIO_ESP_HOSTED
@@ -948,9 +978,34 @@ void sysinfo_json(String &out, bool is_broker_mode) {
   json_kv_u(out, "mem_min_free_heap", ESP.getMinFreeHeap(), first);
   json_kv_u(out, "mem_heap_total", ESP.getHeapSize(), first);
   json_kv_u(out, "mem_max_alloc", ESP.getMaxAllocHeap(), first);
+  json_kv_u(out, "mem_dma_free",
+            heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+            first);
+  json_kv_u(
+      out, "mem_dma_min_free",
+      heap_caps_get_minimum_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+      first);
+  json_kv_u(
+      out, "mem_dma_max_alloc",
+      heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+      first);
+  {
+    const AllocFailInfo &n = memdiag_alloc_fail_now();
+    const AllocFailInfo &p = memdiag_alloc_fail_prev();
+    json_kv_u(out, "alloc_fail", n.count, first);
+    json_kv_u(out, "alloc_fail_last_size", n.size, first);
+    json_kv_u(out, "alloc_fail_last_caps", n.caps, first);
+    json_kv_str(out, "alloc_fail_last_task", n.task, first);
+    json_kv_u(out, "alloc_fail_prev_boot", p.count, first);
+    json_kv_u(out, "alloc_fail_prev_size", p.size, first);
+    json_kv_u(out, "alloc_fail_prev_caps", p.caps, first);
+    json_kv_str(out, "alloc_fail_prev_task", p.task, first);
+  }
   if (psramFound()) {
     json_kv_u(out, "mem_psram_size", ESP.getPsramSize(), first);
     json_kv_u(out, "mem_psram_free", ESP.getFreePsram(), first);
+    json_kv_u(out, "mem_psram_min_free", ESP.getMinFreePsram(), first);
+    json_kv_u(out, "mem_psram_max_alloc", ESP.getMaxAllocPsram(), first);
   }
 
   json_kv_u(out, "flash_size", ESP.getFlashChipSize(), first);

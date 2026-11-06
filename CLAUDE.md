@@ -103,6 +103,9 @@ Multi-file Arduino sketch. Current sources:
   `lib/rtlsdr/` (built only with the flag, via its `gate.py`).
 - `src/nicrc.c/h` — readsb `compute_nic()`/`compute_rc()` (verbatim, GPL-3):
   NIC/Rc per CPR half → `nic`/`rc` in `ADSB/{icao}`.
+- `src/memdiag.cpp/hpp` — failed-alloc hook (count/last request kept in
+  `RTC_NOINIT`, so the crashed boot's record shows on the next boot) +
+  coredump-in-flash summary; surfaced in `/`, `/data`, `status`.
 - `src/listenv.cpp` — logs all injected build metadata on startup via `listEnv()`.
 - `src/http_server.hpp` — shared `WebServer` extern, page CSS, and function
   prototypes (`sysinfo_html`, `sysinfo_json`, `webserver_setup`, `webserver_loop`, `ota_setup`).
