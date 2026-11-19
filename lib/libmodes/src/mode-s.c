@@ -1,5 +1,16 @@
 #include "mode-s.h"
 
+#include <stdlib.h>
+#ifdef ESP_PLATFORM
+#include <esp_heap_caps.h>
+// Where the 33 KB magnitude LUT lives. Patch: sensorpod, was a static array
+// (always internal RAM); PSRAM frees internal RAM at some demod speed cost.
+// Falls back to plain malloc() when that fails (e.g. no PSRAM).
+#ifndef MODE_S_MAGLUT_CAPS
+#define MODE_S_MAGLUT_CAPS MALLOC_CAP_SPIRAM
+#endif
+#endif
+
 #define MODE_S_PREAMBLE_US 8 // microseconds
 #define MODE_S_LONG_MSG_BITS 112
 #define MODE_S_SHORT_MSG_BITS 56
@@ -9,12 +20,11 @@
 
 // Patch: sensorpod, was [129 * 129 * 2] (dump1090's malloc() byte count used
 // as an element count); indices are i * 129 + q with i, q <= 128.
-static uint16_t maglut[129 * 129];
-static int maglut_initialized = 0;
+static uint16_t *maglut;
 
 // =============================== Initialization ===========================
 
-void mode_s_init(mode_s_t *self) {
+int mode_s_init(mode_s_t *self) {
   int i, q;
 
   self->fix_errors = 1;
@@ -31,14 +41,23 @@ void mode_s_init(mode_s_t *self) {
   // We scale to 0-255 range multiplying by 1.4 in order to ensure that every
   // different I/Q pair will result in a different magnitude value, not losing
   // any resolution.
-  if (!maglut_initialized) {
+  if (!maglut) {
+    uint16_t *lut = NULL;
+#ifdef ESP_PLATFORM
+    lut = heap_caps_malloc(129 * 129 * sizeof(uint16_t), MODE_S_MAGLUT_CAPS);
+#endif
+    if (!lut)
+      lut = malloc(129 * 129 * sizeof(uint16_t));
+    if (!lut)
+      return -1;
     for (i = 0; i <= 128; i++) {
       for (q = 0; q <= 128; q++) {
-        maglut[i * 129 + q] = round(sqrt(i * i + q * q) * 360);
+        lut[i * 129 + q] = round(sqrt(i * i + q * q) * 360);
       }
     }
-    maglut_initialized = 1;
+    maglut = lut;
   }
+  return 0;
 }
 
 // ===================== Mode S detection and decoding  =====================

@@ -137,7 +137,8 @@ typedef void (*mode_s_callback_t)(mode_s_t *self, struct mode_s_msg *mm);
 extern "C" {
 #endif
 
-void mode_s_init(mode_s_t *self);
+// Returns 0, or -1 if the magnitude LUT could not be allocated.
+int mode_s_init(mode_s_t *self);
 void mode_s_compute_magnitude_vector(unsigned char *data, uint16_t *mag,
                                      uint32_t size);
 void mode_s_compute_magnitude_vector_stats(unsigned char *data, uint16_t *mag,

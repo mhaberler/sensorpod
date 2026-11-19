@@ -55,7 +55,7 @@ static volatile bool gone;
 // here), handing full buffers to demod_task on the other core. If the
 // demodulator falls behind and no buffer is free, the reader reads into
 // `scratch` and drops it (overrun) rather than stalling the dongle.
-static mode_s_t mode_s_ctx; // demod_task only
+static mode_s_t *mode_s_ctx; // demod_task only; 8 KB, PSRAM when present
 static uint8_t *iq_bufs[RTLSDR_NBUF];
 static uint8_t *scratch;
 static uint16_t *mag_chunk;  // demod_task only, internal RAM (DEMOD_MAG_LEN)
@@ -278,7 +278,7 @@ static void demod_task(void *) {
     // Chunked through internal RAM, magnitude tail carried across
     // consecutive buffers; also yields clipped I/Q bytes and sum of I^2+Q^2.
     uint32_t clipped, iq_pwr;
-    demod_buffer(chunker, &mode_s_ctx, iq_bufs[idx], RTLSDR_BUF_LEN, fb.seq,
+    demod_buffer(chunker, mode_s_ctx, iq_bufs[idx], RTLSDR_BUF_LEN, fb.seq,
                  on_msg, &clipped, &iq_pwr);
     total_clipped += clipped;
     // Noise floor: messages occupy a tiny fraction of the buffer, so the
@@ -364,7 +364,12 @@ void adsb_rtlsdr_setup() {
     log_e("ADS-B RTL-SDR: PSRAM buffer alloc failed, disabled");
     return;
   }
-  mode_s_init(&mode_s_ctx); // magnitude LUT; fix_errors on (dump1090 default)
+  mode_s_ctx = (mode_s_t *)calloc(1, sizeof(mode_s_t));
+  // magnitude LUT; fix_errors on (dump1090 default)
+  if (!mode_s_ctx || mode_s_init(mode_s_ctx) != 0) {
+    log_e("ADS-B RTL-SDR: decoder alloc failed, disabled");
+    return;
+  }
   cal_k = DeviceConfig::getRtlCalK();
 
   new_dev_queue = xQueueCreate(8, sizeof(uint8_t));

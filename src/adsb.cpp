@@ -35,7 +35,8 @@ extern "C" {
 // MQTT topic {hostname}/ADSB/{icao}. Optionally every raw frame line is
 // also published verbatim ("*<hex>;") to topic ihex.
 
-#define ADSB_RX_BUF_SIZE 16384
+#define ADSB_RX_BUF_SIZE                                                       \
+  4096 // ~44 ms at 921600 baud; adsb_rx drains every 1 ms
 #define ADSB_RINGBUF_SIZE 8192
 #define ADSB_MAX_LINE 32 // "*" + 28 hex chars (112 bit frame) + ";"
 #ifndef ADSB_LOG_FIRST_LINES
@@ -63,7 +64,7 @@ volatile bool adsb_ihex_enabled = false;
 volatile bool adsb_ihex_signal = false;
 static volatile bool adsb_signal_reset_pending = false;
 
-static mode_s_t mode_s_ctx;
+static mode_s_t *mode_s_ctx; // 8 KB (ICAO cache): heap, PSRAM when present
 
 // Last raw frame per message class, replayed on ihex to new subscribers so an
 // ihex-only decoder can rebuild the table (ident, CPR pair, velocity, ...).
@@ -342,7 +343,11 @@ void adsb_setup() {
 #ifdef ADSB_RTLSDR
   adsb_ihex_signal = DeviceConfig::isAdsbIhexSignalEnabled();
 #endif
-  adsb_ringbuf = xRingbufferCreate(ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT);
+  // Only adsb_rx/USB/RTL-SDR tasks and loop() touch it (no ISR): PSRAM is fine.
+  adsb_ringbuf = xRingbufferCreateWithCaps(
+      ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT, MALLOC_CAP_SPIRAM);
+  if (!adsb_ringbuf)
+    adsb_ringbuf = xRingbufferCreate(ADSB_RINGBUF_SIZE, RINGBUF_TYPE_NOSPLIT);
   adsb_serial.setRxBufferSize(ADSB_RX_BUF_SIZE);
   adsb_serial.begin(ADSB_BAUD, SERIAL_8N1, ADSB_RX_PIN, ADSB_TX_PIN);
   xTaskCreate(adsb_reader_task, "adsb_rx", 4096, nullptr, 5, nullptr);
@@ -351,10 +356,15 @@ void adsb_setup() {
   // demodulator (mode_s_detect), which we never call - we feed already
   // demodulated frames straight into mode_s_decode(). Set the config
   // fields it would otherwise set, check-only per project decision.
-  memset(&mode_s_ctx, 0, sizeof(mode_s_ctx));
-  mode_s_ctx.fix_errors = 0;
-  mode_s_ctx.aggressive = 0;
-  mode_s_ctx.check_crc = 1;
+  // calloc: > SPIRAM_MALLOC_ALWAYSINTERNAL, so PSRAM when present.
+  mode_s_ctx = (mode_s_t *)calloc(1, sizeof(mode_s_t));
+  if (mode_s_ctx) {
+    mode_s_ctx->fix_errors = 0;
+    mode_s_ctx->aggressive = 0;
+    mode_s_ctx->check_crc = 1;
+  } else {
+    log_e("ADS-B: no memory for decoder context, frames not decoded");
+  }
 
   log_i("ADS-B UART started at %d baud (rx=%d tx=%d)", ADSB_BAUD, ADSB_RX_PIN,
         ADSB_TX_PIN);
@@ -422,14 +432,14 @@ static void adsb_process_frame(const char *hex, size_t hexlen, float signal) {
 
   unsigned char msg[14] = {0};
   size_t nbytes = hex_to_bin(hex, hexlen, msg, sizeof(msg));
-  if (nbytes < 7) // shorter than any DF17/18 frame can be
+  if (nbytes < 7 || !mode_s_ctx) // shorter than any DF17/18 frame can be
     return;
 
   adsb_frames_seen++;
 
   struct mode_s_msg mm;
   memset(&mm, 0, sizeof(mm));
-  mode_s_decode(&mode_s_ctx, &mm, msg);
+  mode_s_decode(mode_s_ctx, &mm, msg);
 
   if (!mm.crcok) {
     adsb_crc_fail++;
