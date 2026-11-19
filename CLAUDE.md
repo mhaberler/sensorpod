@@ -217,7 +217,8 @@ change, not the last build). Consumers include it via
 
 ## Boards
 
-All board params live in `platformio.ini` — no custom board JSONs. Use stock
+Board params live in `platformio.ini`; the one custom board JSON is
+`boards/waveshare-esp32-s31-zero-n32r16.json` (no stock S31 board fits). Use stock
 pio board names (`m5stack-core-esp32-16M`, `esp32-c5-devkitc1-n16r4`, …) and
 override `board_build.*` / `board_upload.*` in the env when the variant
 differs (e.g. C5 N16R8 reuses the N16R4 stock board; PSRAM size is
